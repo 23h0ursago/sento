@@ -6,7 +6,7 @@
 // phones later, swap store.load/save for a backend (see README).
 // ---------------------------------------------------------------------------
 
-const VERSION = 5; // shown in Settings; keep in step with CACHE in sw.js
+const VERSION = 6; // shown in Settings; keep in step with CACHE in sw.js
 const KEY = 'sento:v1';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -268,7 +268,63 @@ function render() {
   const { a, b } = S.names;
   $('#subtitle').textContent = a ? `${a} & ${b || 'Moka'}` : `with ${b || 'Moka'}`;
   document.querySelectorAll('[data-tab]').forEach(el => el.setAttribute('aria-current', el.dataset.tab === tab ? 'page' : 'false'));
-  view.innerHTML = tab === 'go' ? viewGo() : tab === 'sentos' ? viewSentos() : viewHistory();
+  view.innerHTML = tab === 'go' ? viewGo() : tab === 'sentos' ? viewSentos() : tab === 'diary' ? viewDiary() : viewHistory();
+  hydratePhotos(view);
+}
+
+// さっぱり: every visit photo as a grid, grouped by month.
+function viewDiary() {
+  const items = diaryPhotos();
+  const visits = new Set(items.map(p => p.v.id)).size;
+  let h = `<h2 class="page-title">さっぱり</h2>
+    <p class="hint">${items.length ? `${items.length} photo${items.length > 1 ? 's' : ''} from ${visits} visit${visits > 1 ? 's' : ''}` : 'Your bath-day photo diary'}</p>`;
+  if (photoQ.up.length && sync.state.code) {
+    h += `<p class="hint${photoErr ? ' warn' : ''}">${photoQ.up.length} photo${photoQ.up.length > 1 ? 's' : ''} waiting to upload${photoErr ? ` (${esc(photoErr)})` : '…'}</p>`;
+  }
+  if (!items.length) {
+    return h + `<section class="empty-note">
+      <p>No photos yet. Snap a selfie when you log your next soak, and it’ll show up here.</p>
+      <button class="btn primary" data-action="log">+ Log a visit</button>
+    </section>`;
+  }
+  let month = '';
+  for (const { id, v } of items) {
+    const m = v.date.slice(0, 7);
+    if (m !== month) {
+      h += `${month ? '</div>' : ''}<h3 class="section month">${esc(parseDay(v.date).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))}</h3><div class="grid">`;
+      month = m;
+    }
+    const src = photoSrc(id, 'thumb');
+    h += `<button class="tile" data-action="view-photo" data-id="${esc(id)}" aria-label="${esc(sentoOf(v.sentoId)?.name || 'Sento')}, ${esc(dayWord(v.date))}">
+      <img data-photo="${esc(id)}" data-size="thumb" alt="" ${src ? `src="${src}" data-ready="1"` : ''} loading="lazy">
+      <span class="tile-date">${parseDay(v.date).getDate()}</span>
+    </button>`;
+  }
+  return h + '</div>';
+}
+
+function openPhoto(id) {
+  const items = diaryPhotos();
+  const i = items.findIndex(p => p.id === id);
+  if (i < 0) return;
+  const { v } = items[i];
+  const prev = items[i - 1], next = items[i + 1];
+  const thumb = photoSrc(id, 'thumb');
+  openSheet(sentoOf(v.sentoId)?.name || 'Sento', `
+    <figure class="viewer">
+      <img data-photo="${esc(id)}" data-size="full" alt="" ${thumb ? `src="${thumb}"` : ''}>
+    </figure>
+    <div class="viewer-nav">
+      <button type="button" class="btn small" data-action="view-photo" data-id="${esc(prev?.id || '')}" ${prev ? '' : 'disabled'} aria-label="Newer photo">‹</button>
+      <span class="hint">${i + 1} / ${items.length}</span>
+      <button type="button" class="btn small" data-action="view-photo" data-id="${esc(next?.id || '')}" ${next ? '' : 'disabled'} aria-label="Older photo">›</button>
+    </div>
+    <p class="meta">${esc(dayWord(v.date))} ${stars(v.rating)}</p>
+    ${v.note ? `<p>${esc(v.note)}</p>` : ''}
+    <div class="two">
+      <button type="button" class="btn" data-action="edit-visit" data-id="${v.id}">Edit visit</button>
+      <button type="button" class="btn danger" data-action="delete-photo" data-id="${esc(id)}">Delete photo</button>
+    </div>`, null);
 }
 
 function viewGo() {
@@ -369,7 +425,7 @@ function viewHistory() {
     const d = parseDay(v.date);
     h += `<button class="row" data-action="edit-visit" data-id="${v.id}">
       <span class="date"><small>${DAYS[d.getDay()]}</small><b>${d.getDate()}</b></span>
-      <span class="grow"><b>${esc(sentoOf(v.sentoId)?.name || 'Unknown sento')}</b>${v.note ? `<small class="note">${esc(v.note)}</small>` : ''}</span>
+      <span class="grow"><b>${esc(sentoOf(v.sentoId)?.name || 'Unknown sento')}</b>${v.note ? `<small class="note">${esc(v.note)}</small>` : ''}${v.photos?.length ? `<small>📷 ${v.photos.length}</small>` : ''}</span>
       ${stars(v.rating)}
     </button>`;
   }
@@ -386,6 +442,7 @@ let onSheetSubmit = null;
 
 function openSheet(title, body, onSubmit) {
   if (sheet.open) sheet.close();
+  discardPhotoDraft();
   onSheetSubmit = onSubmit;
   sheetForm.innerHTML = `
     <header class="sheet-head">
@@ -394,6 +451,7 @@ function openSheet(title, body, onSubmit) {
     </header>
     <div class="sheet-body">${body}</div>`;
   sheet.showModal();
+  hydratePhotos(sheetForm);
 }
 
 // Save is first in the DOM so Enter submits it; CSS shows Delete on the left.
@@ -411,8 +469,11 @@ sheet.addEventListener('click', e => {
   if (e.target === sheet || e.target.closest('[data-close]')) sheet.close();
   if (e.target.closest('[data-clear-rating]')) sheetForm.querySelectorAll('[name=rating]').forEach(r => (r.checked = false));
   if (e.target.closest('[data-copy-hours]')) copyMondayHours();
+  const rm = e.target.closest('[data-remove-photo]');
+  if (rm) removePhotoFromForm(rm.dataset.removePhoto);
 });
 sheetForm.addEventListener('change', e => {
+  if (e.target.matches('[data-photo-input]')) addPhotosToForm(e.target);
   if (e.target.name === 'sentoId') $('#new-sento').hidden = e.target.value !== '__new';
   if (/^closed\d$/.test(e.target.name)) setDayClosed(e.target.closest('.day-row'), e.target.checked);
 });
@@ -466,7 +527,10 @@ function openSento(s) {
       const n = sentoStats(s.id).count;
       if (!confirm(`Delete ${s.name}${n ? ` and its ${n} logged visit${n > 1 ? 's' : ''}` : ''}?`)) return false;
       S.sentos = remove(S.sentos, s.id);
-      for (const v of S.visits.filter(v => v.sentoId === s.id)) S.visits = remove(S.visits, v.id);
+      for (const v of S.visits.filter(v => v.sentoId === s.id)) {
+        (v.photos || []).forEach(forgetPhoto);
+        S.visits = remove(S.visits, v.id);
+      }
       return;
     }
     const name = fd.get('name').trim();
@@ -500,13 +564,24 @@ function openVisit(v) {
       </div>
     </fieldset>
     <label class="field"><span>Note <em>optional</em></span><textarea name="note" rows="3" placeholder="Hot bath was perfect, coffee milk after…">${esc(v.note)}</textarea></label>
+    <fieldset class="field">
+      <legend>Photos <em>optional</em></legend>
+      <div class="photo-strip" id="photo-strip">${(v.photos || []).map(photoChip).join('')}</div>
+      <div class="two">
+        <label class="btn file-btn"><input type="file" accept="image/*" capture="user" data-photo-input>🤳 Selfie</label>
+        <label class="btn file-btn"><input type="file" accept="image/*" multiple data-photo-input>🖼 Choose</label>
+      </div>
+      <input type="hidden" name="photos" value="${esc((v.photos || []).join(','))}">
+    </fieldset>
     ${footer(isNew ? 'Log it' : 'Save', isNew ? '' : deleteBtn)}`,
   (fd, act) => {
     if (act === 'delete') {
-      if (!confirm('Delete this visit?')) return false;
+      if (!confirm(`Delete this visit${v.photos?.length ? ' and its photos' : ''}?`)) return false;
+      (v.photos || []).forEach(forgetPhoto);
       S.visits = remove(S.visits, v.id);
       return;
     }
+    if (photoDraft.busy) { toast('Hang on, still adding your photo…'); return false; }
     const date = fd.get('date');
     if (!date) { toast('Pick a date'); return false; }
     let sentoId = fd.get('sentoId');
@@ -518,11 +593,63 @@ function openVisit(v) {
       sentoId = s.id;
       toast(`${name} added — set its hours in Favourites`);
     }
-    Object.assign(v, { date, sentoId, rating: Number(fd.get('rating')) || 0, note: fd.get('note').trim() });
+    const photos = fd.get('photos').split(',').filter(Boolean);
+    for (const id of v.photos || []) if (!photos.includes(id)) forgetPhoto(id); // removed with ×
+    for (const id of photos) if (photoDraft.added.has(id)) queuePhoto('up', id);
+    photoDraft.saved = true;
+    Object.assign(v, { date, sentoId, rating: Number(fd.get('rating')) || 0, note: fd.get('note').trim(), photos });
     touch(v);
     if (isNew) S.visits.push(v);
   });
+  photoDraft = { added: new Set(), saved: false, busy: 0 };
 }
+
+// Photos added in the open visit form. If the form is closed without saving, they're dropped.
+let photoDraft = { added: new Set(), saved: true, busy: 0 };
+
+const photoChip = id => `<span class="photo-chip" data-id="${esc(id)}">
+  <img data-photo="${esc(id)}" data-size="thumb" alt="" ${photoSrc(id, 'thumb') ? `src="${photoSrc(id, 'thumb')}" data-ready="1"` : ''}>
+  <button type="button" data-remove-photo="${esc(id)}" aria-label="Remove photo">×</button>
+</span>`;
+
+async function addPhotosToForm(input) {
+  const files = [...input.files];
+  input.value = '';
+  const field = sheetForm.elements.photos;
+  const strip = $('#photo-strip');
+  for (const file of files) {
+    photoDraft.busy++;
+    const holder = document.createElement('span');
+    holder.className = 'photo-chip adding';
+    strip.append(holder);
+    try {
+      const id = await addPhoto(file);
+      photoDraft.added.add(id);
+      field.value = [...field.value.split(',').filter(Boolean), id].join(',');
+      holder.outerHTML = photoChip(id);
+      hydratePhotos(strip);
+    } catch (err) {
+      holder.remove();
+      toast(err.message || 'Couldn’t add that photo');
+    } finally {
+      photoDraft.busy--;
+    }
+  }
+}
+
+function removePhotoFromForm(id) {
+  const field = sheetForm.elements.photos;
+  field.value = field.value.split(',').filter(x => x && x !== id).join(',');
+  sheetForm.querySelector(`.photo-chip[data-id="${CSS.escape(id)}"]`)?.remove();
+}
+
+// Closed without saving: throw away photos added in that form.
+function discardPhotoDraft() {
+  if (!photoDraft.saved) photoDraft.added.forEach(dropPhotoBlobs);
+  photoDraft = { added: new Set(), saved: true, busy: 0 };
+}
+// The close event arrives a moment later; skip it if another sheet is already open.
+sheet.addEventListener('close', () => { if (!sheet.open) discardPhotoDraft(); });
 
 function openSettings() {
   openSheet('Settings', `
@@ -550,6 +677,9 @@ function openSettings() {
       if (!confirm(msg)) return false;
       disconnect();
       S = freshState();
+      idbDo('readwrite', st => st.clear()).catch(() => {});
+      photoQ = { up: [], del: [] };
+      savePhotoQ();
       return;
     }
     const names = { a: fd.get('a').trim(), b: fd.get('b').trim() || 'Moka' };
@@ -700,6 +830,8 @@ function connect(code) {
   sync.state = { code: prettyCode(code), dirty, at: 0 };
   sync.status = 'pending';
   saveSync();
+  // Upload photos taken on this phone (ones that only exist on the other phone are skipped).
+  for (const v of S.visits) for (const id of v.photos || []) queuePhoto('up', id);
   return runSync();
 }
 
@@ -738,6 +870,20 @@ function applyRemote(records) {
   return changed;
 }
 
+// Call one of the Supabase functions from supabase.sql / supabase-photos.sql.
+async function rpc(fn, body) {
+  const headers = { 'Content-Type': 'application/json', apikey: SYNC.key };
+  if (SYNC.key.startsWith('eyJ')) headers.Authorization = `Bearer ${SYNC.key}`; // legacy anon key
+  const res = await fetch(`${SYNC.url.replace(/\/$/, '')}/rest/v1/rpc/${fn}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`error ${res.status}`);
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
 function runSync() {
   if (!SYNC.url || !sync.state.code) return Promise.resolve();
   if (sync.busy) { sync.again = true; return sync.busy; }
@@ -747,15 +893,7 @@ function runSync() {
     sync.status = 'pending';
     updateSyncDot();
     try {
-      const headers = { 'Content-Type': 'application/json', apikey: SYNC.key };
-      if (SYNC.key.startsWith('eyJ')) headers.Authorization = `Bearer ${SYNC.key}`; // legacy anon key
-      const res = await fetch(`${SYNC.url.replace(/\/$/, '')}/rest/v1/rpc/sento_sync`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ p_household: normCode(code), p_changes: changes }),
-      });
-      if (!res.ok) throw new Error(`error ${res.status}`);
-      const records = await res.json();
+      const records = await rpc('sento_sync', { p_household: normCode(code), p_changes: changes });
       if (sync.state.code !== code) return; // disconnected meanwhile
       // Only clear what we sent; anything edited during the request stays dirty.
       for (const c of changes) if (sync.state.dirty[c.id] === c.u) delete sync.state.dirty[c.id];
@@ -768,6 +906,7 @@ function runSync() {
         if (!sheet.open) render();
         fetchCalendar(); // picks up a calendar link added on the other phone
       }
+      pushPhotos();
     } catch (err) {
       sync.status = 'error';
       sync.error = err.message;
@@ -789,7 +928,8 @@ function scheduleSync() {
 
 function updateSyncDot() {
   const dot = $('#sync-dot');
-  dot.dataset.s = sync.state.code ? (sync.status === 'ok' && Object.keys(sync.state.dirty).length ? 'pending' : sync.status) : 'off';
+  const waiting = Object.keys(sync.state.dirty).length || photoQ.up.length || photoQ.del.length;
+  dot.dataset.s = sync.state.code ? (sync.status === 'ok' && waiting ? 'pending' : sync.status) : 'off';
   const line = $('#sync-line');
   if (line) { line.dataset.s = sync.status; line.textContent = syncStatusText(); }
 }
@@ -833,6 +973,172 @@ function invite() {
   if (!navigator.clipboard) { prompt('Copy this invite:', text); return; }
   navigator.clipboard.writeText(text).then(() => toast('Invite copied'), () => prompt('Copy this invite:', text));
 }
+
+// ---------------------------------------------------------------------------
+// Photos (the さっぱり diary)
+// Visits list photo ids in `photos`. Each photo is a small grid thumbnail and a
+// larger image, kept on this phone in IndexedDB and uploaded to the shared space
+// (supabase-photos.sql) so the other phone can download it.
+// ---------------------------------------------------------------------------
+
+const PHOTO_SIZES = { thumb: [360, 0.72], full: [1280, 0.8] }; // max px, JPEG quality
+const PHOTOQ_KEY = 'sento:photoq';
+let photoDb = null;
+
+function idb() {
+  photoDb ||= new Promise((resolve, reject) => {
+    const req = indexedDB.open('sento-photos', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('photos');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return photoDb;
+}
+async function idbDo(mode, fn) {
+  const db = await idb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('photos', mode);
+    const req = fn(tx.objectStore('photos'));
+    tx.oncomplete = () => resolve(req?.result);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+const photoBlob = (id, size) => idbDo('readonly', st => st.get(`${id}:${size}`)).catch(() => null);
+const savePhotoBlob = (id, size, blob) => idbDo('readwrite', st => st.put(blob, `${id}:${size}`));
+const dropPhotoBlobs = id => idbDo('readwrite', st => { st.delete(`${id}:thumb`); st.delete(`${id}:full`); }).catch(() => {});
+
+// Shrink a picked/taken photo into both sizes and keep it on this phone.
+async function addPhoto(file) {
+  const src = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = src;
+    await img.decode();
+    const id = uid();
+    for (const [size, [max, quality]] of Object.entries(PHOTO_SIZES)) {
+      const r = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.naturalWidth * r);
+      canvas.height = Math.round(img.naturalHeight * r);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', quality));
+      if (!blob) throw new Error('Couldn’t read that photo');
+      await savePhotoBlob(id, size, blob);
+    }
+    return id;
+  } finally {
+    URL.revokeObjectURL(src);
+  }
+}
+
+// Object URLs for <img>, cached so re-renders don't flicker.
+const photoUrls = new Map();    // "id:size" → url
+const photoLoading = new Map(); // "id:size" → promise
+const photoSrc = (id, size) => photoUrls.get(`${id}:${size}`) || '';
+
+function photoUrl(id, size) {
+  const key = `${id}:${size}`;
+  if (photoUrls.has(key)) return Promise.resolve(photoUrls.get(key));
+  if (!photoLoading.has(key)) {
+    photoLoading.set(key, (async () => {
+      let blob = await photoBlob(id, size);
+      if (!blob && SYNC.url && sync.state.code) {
+        try {
+          const b64 = await rpc('sento_photo_get', { p_household: normCode(sync.state.code), p_id: id, p_full: size === 'full' });
+          if (b64) {
+            blob = fromBase64(b64);
+            savePhotoBlob(id, size, blob).catch(() => {});
+          }
+        } catch {}
+      }
+      photoLoading.delete(key); // allow a retry later if it failed
+      if (!blob) return '';
+      const url = URL.createObjectURL(blob);
+      photoUrls.set(key, url);
+      return url;
+    })());
+  }
+  return photoLoading.get(key);
+}
+
+// Fill in <img data-photo="id" data-size="thumb|full"> once their images are ready.
+function hydratePhotos(root) {
+  root.querySelectorAll('img[data-photo]:not([data-ready])').forEach(img => {
+    const { photo, size } = img.dataset;
+    photoUrl(photo, size).then(url => {
+      if (url) { img.src = url; img.dataset.ready = '1'; }
+      else if (!img.getAttribute('src')) img.closest('.tile, .photo-chip, .viewer')?.classList.add('missing');
+    });
+  });
+}
+
+const toBase64 = blob => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(String(r.result).split(',')[1]);
+  r.onerror = () => reject(r.error);
+  r.readAsDataURL(blob);
+});
+function fromBase64(b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: 'image/jpeg' });
+}
+
+// Uploads and deletions waiting for the shared space: { up: [ids], del: [ids] }
+let photoQ = (() => { try { return { up: [], del: [], ...JSON.parse(localStorage.getItem(PHOTOQ_KEY)) }; } catch { return { up: [], del: [] }; } })();
+let photoErr = '';
+let photoPushing = false;
+const savePhotoQ = () => { try { localStorage.setItem(PHOTOQ_KEY, JSON.stringify(photoQ)); } catch {} };
+
+function queuePhoto(kind, id) {
+  const other = kind === 'up' ? 'del' : 'up';
+  photoQ[other] = photoQ[other].filter(x => x !== id);
+  if (!photoQ[kind].includes(id)) photoQ[kind].push(id);
+  savePhotoQ();
+}
+
+async function pushPhotos() {
+  if (!SYNC.url || !sync.state.code || photoPushing || !(photoQ.up.length || photoQ.del.length)) return;
+  photoPushing = true;
+  const household = normCode(sync.state.code);
+  const done = (kind, id) => { photoQ[kind] = photoQ[kind].filter(x => x !== id); savePhotoQ(); };
+  try {
+    for (const id of [...photoQ.up]) {
+      const [thumb, full] = await Promise.all([photoBlob(id, 'thumb'), photoBlob(id, 'full')]);
+      if (thumb && full) {
+        await rpc('sento_photo_put', { p_household: household, p_id: id, p_thumb: await toBase64(thumb), p_image: await toBase64(full) });
+      }
+      done('up', id); // photos only on the other phone have nothing to upload
+    }
+    for (const id of [...photoQ.del]) {
+      await rpc('sento_photo_delete', { p_household: household, p_id: id });
+      done('del', id);
+    }
+    photoErr = '';
+  } catch (err) {
+    photoErr = /404/.test(err.message) ? 'photo sharing isn’t set up in Supabase yet' : 'couldn’t upload, will retry';
+    console.warn(err);
+  } finally {
+    photoPushing = false;
+    updateSyncDot();
+    if (tab === 'diary' && !sheet.open) render();
+  }
+}
+
+// Remove a photo everywhere: this phone, the shared space and any open <img>.
+function forgetPhoto(id) {
+  dropPhotoBlobs(id);
+  for (const size of Object.keys(PHOTO_SIZES)) {
+    const url = photoUrls.get(`${id}:${size}`);
+    if (url) { URL.revokeObjectURL(url); photoUrls.delete(`${id}:${size}`); }
+  }
+  if (sync.state.code) queuePhoto('del', id);
+  else { photoQ.up = photoQ.up.filter(x => x !== id); savePhotoQ(); }
+}
+
+// Every diary photo, newest visit first.
+const diaryPhotos = () => pastVisits().flatMap(v => (v.photos || []).map(id => ({ id, v })));
 
 // ---------------------------------------------------------------------------
 // Google Calendar (via the Apps Script in google-apps-script/Code.gs)
@@ -948,6 +1254,16 @@ const actions = {
   },
   'sync-join': () => joinWith($('[name=joinCode]').value).then(() => sync.state.code && openSettings()),
   'sync-invite': invite,
+  'view-photo': id => id && openPhoto(id),
+  'delete-photo': id => {
+    const v = S.visits.find(x => x.photos?.includes(id));
+    if (!v || !confirm('Delete this photo from your diary on both phones?')) return;
+    v.photos = v.photos.filter(x => x !== id);
+    forgetPhoto(id);
+    touch(v);
+    sheet.close();
+    commit();
+  },
   'cal-connect': async () => {
     const url = $('[name=calUrl]').value.trim();
     const key = $('[name=calKey]').value.trim();

@@ -39,6 +39,12 @@ Each phone keeps a full offline copy and syncs on open, every 20 seconds while o
 
 Settings → **Export** / **Import** still works as a backup.
 
+## さっぱり photo diary
+
+When logging a visit, add photos with 🤳 **Selfie** (front camera) or 🖼 **Choose**. Every photo appears in the **さっぱり** tab as a grid grouped by month. Tap one to see it large with the sento, date, rating and note.
+
+Photos are shrunk on the phone (a ~360px grid thumbnail and a ~1280px image) and kept there, so they work offline. To share them with your partner, run `supabase-photos.sql` once in the Supabase SQL Editor. Photos are then uploaded under your private household code. Deleting a photo removes it from both phones and from Supabase. Export/Import backups don't include photos.
+
 ## Google Calendar suggestions
 
 With calendars connected, "Should we go?" only suggests 2-hour windows when you're both free, a favourite is open, and it's likely quiet. A small Google Apps Script (`google-apps-script/Code.gs`) runs under your Google account and returns only merged busy times. No event titles or details leave Google, and no Google Cloud project is needed.

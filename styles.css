@@ -111,8 +111,8 @@ main {
   left: 0; right: 0; bottom: 0;
   z-index: 10;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+  grid-template-columns: repeat(4, 1fr);
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   -webkit-backdrop-filter: saturate(1.4) blur(14px);
   backdrop-filter: saturate(1.4) blur(14px);
@@ -312,6 +312,58 @@ input::-webkit-date-and-time-value { text-align: left; }
 textarea { resize: vertical; }
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* さっぱり photo diary */
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; border-radius: 14px; overflow: hidden; }
+.tile {
+  position: relative;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  background: var(--surface-2);
+  overflow: hidden;
+  cursor: pointer;
+}
+.tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tile img:not([src]) { visibility: hidden; }
+.tile-date {
+  position: absolute;
+  left: 6px; bottom: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .6);
+}
+.tile.missing::after, .viewer.missing::after { content: "Photo not available yet"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 11px; color: var(--muted); padding: 6px; text-align: center; }
+.viewer { position: relative; margin: 0; border-radius: 16px; overflow: hidden; background: var(--surface-2); min-height: 200px; }
+.viewer img { display: block; width: 100%; max-height: 60dvh; object-fit: contain; }
+.viewer-nav { display: flex; align-items: center; justify-content: space-between; }
+.viewer-nav .btn { min-width: 56px; font-size: 22px; }
+.viewer-nav .btn:disabled { opacity: .3; }
+
+/* Photos in the visit form */
+.photo-strip { display: flex; flex-wrap: wrap; gap: 8px; }
+.photo-strip:empty { display: none; }
+.photo-chip { position: relative; width: 72px; height: 72px; border-radius: 12px; overflow: hidden; background: var(--surface-2); }
+.photo-chip img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo-chip img:not([src]) { visibility: hidden; }
+.photo-chip.adding { animation: pulse 1s ease-in-out infinite alternate; }
+@keyframes pulse { to { opacity: .4; } }
+.photo-chip button {
+  position: absolute;
+  top: 3px; right: 3px;
+  width: 24px; height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .6);
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.file-btn { position: relative; overflow: hidden; }
+.file-btn input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; min-height: 0; padding: 0; cursor: pointer; }
 
 /* Weekly opening hours */
 .week { display: grid; gap: 6px; }
