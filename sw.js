@@ -1,10 +1,11 @@
 // Offline support: serve the app shell from cache, refresh it in the background.
 // Bump CACHE when you deploy so old files are cleared.
-const CACHE = 'sento-v1';
+const CACHE = 'sento-v2';
 const SHELL = [
   './',
   './index.html',
   './styles.css',
+  './config.js',
   './app.js',
   './manifest.webmanifest',
   './icons/icon.svg',

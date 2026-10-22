@@ -27,8 +27,14 @@ Then on each iPhone, open the URL in Safari → Share → **Add to Home Screen**
 
 When you deploy changes, bump `CACHE` in `sw.js` so phones pick up the new files.
 
-## Sharing data between two phones
+## Live sync between two phones
 
-Right now each phone keeps its own data (in `localStorage`). Use Settings → **Export** (AirDrop the file) and **Import** on the other phone to merge. The newer edit wins and deletions carry over.
+Sync uses a free Supabase project:
 
-For live sync, replace `store.load`/`store.save` in `app.js` with a small backend (e.g. Supabase, Firebase, or a Cloudflare Worker + D1). Records already carry ids, `u` (updated-at) timestamps and a `deleted` list, so they're ready to merge.
+1. Create a project at https://supabase.com and run `supabase.sql` in its SQL Editor.
+2. Put the Project URL and publishable key into `config.js`, then push.
+3. In the app: Settings → **Start sharing**, then **Invite** your partner. They open the link, or paste the code under Settings → Live sync.
+
+Each phone keeps a full offline copy and syncs on open, every 20 seconds while open, and right after each change. Every favourite and visit is its own record, so the newest edit wins and nothing else gets overwritten. The household code is the only key to your data, so share it only with each other.
+
+Settings → **Export** / **Import** still works as a backup.

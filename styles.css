@@ -338,8 +338,28 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .stars input:focus-visible + label { outline: 2px solid var(--accent); border-radius: 6px; }
 
 .sync { display: grid; gap: 10px; padding: 16px; border-radius: 16px; background: var(--bg); }
-.sync h3 { font-size: 15px; }
+.sync h3 { font-size: 15px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
 .sync p { font-size: 13px; color: var(--muted); }
+.sync code { font: 600 14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink); word-break: break-all; }
+.sync .join { display: flex; gap: 8px; }
+.sync .join input { background: var(--surface); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.sync-state { font-size: 12px; font-weight: 600; color: var(--muted); }
+.sync-state[data-s="ok"] { color: var(--ok); }
+.sync-state[data-s="error"] { color: var(--red); }
+
+/* Status dot on the settings button */
+.icon-btn { position: relative; }
+#sync-dot {
+  position: absolute;
+  top: 9px; right: 8px;
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  border: 2px solid var(--noren);
+  display: none;
+}
+#sync-dot[data-s="ok"] { display: block; background: #5DBB92; }
+#sync-dot[data-s="pending"] { display: block; background: #E8B856; }
+#sync-dot[data-s="error"] { display: block; background: #E36A5C; }
 
 #toast {
   position: fixed;

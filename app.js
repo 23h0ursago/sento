@@ -33,9 +33,9 @@ const store = {
 let S = store.load();
 let tab = 'go';
 
-const commit = () => { store.save(S); render(); };
-const touch = rec => { rec.u = Date.now(); return rec; };
-const remove = (list, id) => { S.deleted.push(id); return list.filter(r => r.id !== id); };
+const commit = () => { store.save(S); render(); scheduleSync(); };
+const touch = rec => { rec.u = Date.now(); markDirty(rec.id, rec.u); return rec; };
+const remove = (list, id) => { S.deleted.push(id); markDirty(id, Date.now()); return list.filter(r => r.id !== id); };
 
 const sentoOf = id => S.sentos.find(s => s.id === id);
 const visitOf = id => S.visits.find(v => v.id === id);
@@ -429,9 +429,10 @@ function openSettings() {
       <label class="field"><span>Your name</span><input name="a" value="${esc(S.names.a)}" autocomplete="given-name"></label>
       <label class="field"><span>Partner</span><input name="b" value="${esc(S.names.b)}"></label>
     </div>
+    ${syncSection()}
     <section class="sync">
-      <h3>Share between our phones</h3>
-      <p>Until this is hosted with a shared database, send your data to each other. <b>Export</b> opens the share sheet (AirDrop works). <b>Import</b> merges what you receive: the newer edit wins, and deletions carry over.</p>
+      <h3>Backup</h3>
+      <p><b>Export</b> saves everything to a file (AirDrop works). <b>Import</b> merges a file back in: the newer edit wins, and deletions carry over.</p>
       <div class="two">
         <button type="button" class="btn" data-action="export">Export</button>
         <button type="button" class="btn" data-action="import">Import</button>
@@ -440,12 +441,50 @@ function openSettings() {
     ${footer('Save', '<button class="btn danger" value="reset">Erase all</button>')}`,
   (fd, act) => {
     if (act === 'reset') {
-      if (!confirm('Erase all favourites and visits on this phone?')) return false;
+      const msg = sync.state.code
+        ? `Erase everything on this phone and stop syncing? The shared copy stays for ${S.names.b || 'Moka'}.`
+        : 'Erase all favourites and visits on this phone?';
+      if (!confirm(msg)) return false;
+      disconnect();
       S = freshState();
       return;
     }
-    S.names = { a: fd.get('a').trim(), b: fd.get('b').trim() || 'Moka' };
+    const names = { a: fd.get('a').trim(), b: fd.get('b').trim() || 'Moka' };
+    if (names.a !== S.names.a || names.b !== S.names.b) {
+      S.names = names;
+      S.namesU = Date.now();
+      markDirty('names', S.namesU);
+    }
   });
+}
+
+function syncSection() {
+  if (!SYNC.url) return '';
+  const st = sync.state;
+  if (!st.code) {
+    return `<section class="sync">
+      <h3>Live sync</h3>
+      <p>Share favourites and visits between both phones automatically. One of you starts, then invites the other.</p>
+      <button type="button" class="btn primary" data-action="sync-start">Start sharing</button>
+      <div class="join">
+        <input name="joinCode" placeholder="Got a code? Paste it here" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button type="button" class="btn" data-action="sync-join">Join</button>
+      </div>
+    </section>`;
+  }
+  return `<section class="sync">
+    <h3>Live sync <span class="sync-state" data-s="${sync.status}">${esc(syncStatusText())}</span></h3>
+    <p>Shared code: <code>${esc(st.code)}</code></p>
+    <div class="two">
+      <button type="button" class="btn primary" data-action="sync-invite">Invite ${esc(S.names.b || 'Moka')}</button>
+      <button type="button" class="btn" data-action="sync-leave">Stop syncing</button>
+    </div>
+  </section>`;
+}
+
+function lastSynced(at) {
+  const m = Math.round((Date.now() - at) / 60000);
+  return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : new Date(at).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
 // ---------------------------------------------------------------------------
@@ -469,11 +508,15 @@ async function exportData() {
 function merge(inc) {
   if (!inc || inc.v !== 1 || !Array.isArray(inc.visits)) throw new Error('That isn’t a Sento export');
   const dead = new Set([...S.deleted, ...(inc.deleted || [])]);
+  for (const id of inc.deleted || []) if (!S.deleted.includes(id)) markDirty(id, Date.now());
   const mergeList = (mine, theirs = []) => {
     const map = new Map(mine.map(r => [r.id, r]));
     for (const r of theirs) {
       const cur = map.get(r.id);
-      if (!cur || (r.u || 0) > (cur.u || 0)) map.set(r.id, r);
+      if (!cur || (r.u || 0) > (cur.u || 0)) {
+        map.set(r.id, r);
+        markDirty(r.id, r.u || 1);
+      }
     }
     return [...map.values()].filter(r => !dead.has(r.id));
   };
@@ -500,6 +543,170 @@ $('#import-file').addEventListener('change', async e => {
 });
 
 // ---------------------------------------------------------------------------
+// Live sync (Supabase, see supabase.sql)
+// Each favourite, visit and the names are one record; the newest edit wins.
+// `dirty` maps record id → edit time of local changes not yet pushed.
+// ---------------------------------------------------------------------------
+
+const SYNC = window.SENTO_SYNC || {};
+const SYNC_KEY = 'sento:sync';
+const sync = { state: loadSync(), status: 'off', busy: null, again: false, timer: 0 };
+
+function loadSync() {
+  const blank = { code: '', dirty: {}, at: 0 };
+  try { return { ...blank, ...JSON.parse(localStorage.getItem(SYNC_KEY)) }; } catch { return blank; }
+}
+function saveSync() {
+  try { localStorage.setItem(SYNC_KEY, JSON.stringify(sync.state)); } catch {}
+}
+function markDirty(id, u) {
+  if (!sync.state.code) return;
+  sync.state.dirty[id] = u;
+  saveSync();
+}
+
+const normCode = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const prettyCode = s => normCode(s).match(/.{1,5}/g)?.join('-') || '';
+function newCode() {
+  const abc = 'abcdefghjkmnpqrstuvwxyz23456789';
+  return prettyCode([...crypto.getRandomValues(new Uint8Array(20))].map(b => abc[b % abc.length]).join(''));
+}
+const inviteLink = code => `${location.origin}${location.pathname}#join=${normCode(code)}`;
+
+function recordFor(id) {
+  const u = sync.state.dirty[id];
+  if (id === 'names') return { id, kind: 'names', data: S.names, u };
+  const s = sentoOf(id);
+  if (s) return { id, kind: 'sento', data: s, u };
+  const v = visitOf(id);
+  if (v) return { id, kind: 'visit', data: v, u };
+  return { id, deleted: true, u };
+}
+
+function connect(code) {
+  const dirty = {};
+  for (const r of [...S.sentos, ...S.visits]) dirty[r.id] = r.u || 1;
+  for (const id of S.deleted) dirty[id] = Date.now();
+  if (S.namesU) dirty.names = S.namesU;
+  sync.state = { code: prettyCode(code), dirty, at: 0 };
+  sync.status = 'pending';
+  saveSync();
+  return runSync();
+}
+
+function disconnect() {
+  sync.state = { code: '', dirty: {}, at: 0 };
+  sync.status = 'off';
+  saveSync();
+  updateSyncDot();
+}
+
+// Merge server records in place, so a sheet that's open keeps editing the live object.
+function applyRemote(records) {
+  let changed = false;
+  for (const r of records) {
+    if (sync.state.dirty[r.id]) continue; // our newer local edit is still on its way up
+    if (r.id === 'names') {
+      if (!r.deleted && r.u > (S.namesU || 0)) { S.names = { ...S.names, ...r.data }; S.namesU = r.u; changed = true; }
+      continue;
+    }
+    const key = r.kind === 'sento' ? 'sentos' : r.kind === 'visit' ? 'visits' : null;
+    if (!key) continue;
+    const local = S[key].find(x => x.id === r.id);
+    if (r.deleted) {
+      if (local) { S[key] = S[key].filter(x => x.id !== r.id); changed = true; }
+      if (!S.deleted.includes(r.id)) S.deleted.push(r.id);
+    } else if (!local) {
+      S[key].push(r.data); changed = true;
+    } else if (r.u > (local.u || 0)) {
+      Object.assign(local, r.data); changed = true;
+    }
+  }
+  return changed;
+}
+
+function runSync() {
+  if (!SYNC.url || !sync.state.code) return Promise.resolve();
+  if (sync.busy) { sync.again = true; return sync.busy; }
+  sync.busy = (async () => {
+    const code = sync.state.code;
+    const changes = Object.keys(sync.state.dirty).map(recordFor);
+    sync.status = 'pending';
+    updateSyncDot();
+    try {
+      const headers = { 'Content-Type': 'application/json', apikey: SYNC.key };
+      if (SYNC.key.startsWith('eyJ')) headers.Authorization = `Bearer ${SYNC.key}`; // legacy anon key
+      const res = await fetch(`${SYNC.url.replace(/\/$/, '')}/rest/v1/rpc/sento_sync`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ p_household: normCode(code), p_changes: changes }),
+      });
+      if (!res.ok) throw new Error(`Sync failed (${res.status})`);
+      const records = await res.json();
+      if (sync.state.code !== code) return; // disconnected meanwhile
+      // Only clear what we sent; anything edited during the request stays dirty.
+      for (const c of changes) if (sync.state.dirty[c.id] === c.u) delete sync.state.dirty[c.id];
+      sync.state.at = Date.now();
+      sync.status = 'ok';
+      saveSync();
+      if (applyRemote(records)) {
+        store.save(S);
+        if (!sheet.open) render();
+      }
+    } catch (err) {
+      sync.status = 'error';
+      console.warn(err);
+    } finally {
+      sync.busy = null;
+      updateSyncDot();
+      if (sync.again) { sync.again = false; runSync(); }
+    }
+  })();
+  return sync.busy;
+}
+
+function scheduleSync() {
+  if (!sync.state.code) return;
+  clearTimeout(sync.timer);
+  sync.timer = setTimeout(runSync, 600);
+}
+
+function updateSyncDot() {
+  const dot = $('#sync-dot');
+  dot.dataset.s = sync.state.code ? (sync.status === 'ok' && Object.keys(sync.state.dirty).length ? 'pending' : sync.status) : 'off';
+  const line = $('.sync-state');
+  if (line) { line.dataset.s = sync.status; line.textContent = syncStatusText(); }
+}
+
+function syncStatusText() {
+  return {
+    ok: `Synced ${sync.state.at ? lastSynced(sync.state.at) : ''}`,
+    pending: 'Syncing…',
+    error: 'Offline — changes will sync when you’re back online',
+  }[sync.status] || 'Connecting…';
+}
+
+async function joinWith(code) {
+  code = normCode(code);
+  if (code.length < 16) { toast('That code looks too short'); return; }
+  if (sync.state.code && normCode(sync.state.code) !== code &&
+      !confirm('This phone is already syncing with another code. Switch?')) return;
+  await connect(code);
+  toast(sync.status === 'ok' ? 'Connected — you’re in sync' : 'Joined — will sync when online');
+}
+
+async function invite() {
+  const code = sync.state.code;
+  const text = `Join our Sento app 🛁\n${inviteLink(code)}\n\nOr open Settings → Live sync and paste this code:\n${code}`;
+  if (navigator.share) {
+    try { await navigator.share({ title: 'Sento invite', text }); } catch {}
+    return;
+  }
+  try { await navigator.clipboard.writeText(text); toast('Invite copied'); }
+  catch { prompt('Copy this invite:', text); }
+}
+
+// ---------------------------------------------------------------------------
 // Wiring
 // ---------------------------------------------------------------------------
 
@@ -511,6 +718,14 @@ const actions = {
   'edit-sento': id => openSento(sentoOf(id)),
   export: exportData,
   import: () => $('#import-file').click(),
+  'sync-start': async () => { await connect(newCode()); openSettings(); invite(); },
+  'sync-join': () => joinWith($('[name=joinCode]').value).then(() => sync.state.code && openSettings()),
+  'sync-invite': invite,
+  'sync-leave': () => {
+    if (!confirm('Stop syncing on this phone? Your data stays here, and the shared copy stays online.')) return;
+    disconnect();
+    openSettings();
+  },
 };
 
 document.addEventListener('click', e => {
@@ -533,12 +748,27 @@ function toast(msg) {
   toast.timer = setTimeout(() => t.classList.remove('show'), 2600);
 }
 
-// Keep "today" and open/closed status fresh when returning to the app.
-document.addEventListener('visibilitychange', () => { if (!document.hidden && !sheet.open) render(); });
+// Keep "today" and open/closed status fresh, and pull your partner's changes.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  if (!sheet.open) render();
+  runSync();
+});
 setInterval(() => { if (!document.hidden && !sheet.open) render(); }, 60000);
+setInterval(() => { if (!document.hidden) runSync(); }, 20000);
+addEventListener('online', () => runSync());
 
 if ('serviceWorker' in navigator) {
   addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 }
 
 render();
+updateSyncDot();
+
+// Invite links look like …/sento/#join=<code>
+const joinHash = location.hash.match(/^#join=([a-z0-9-]+)/i);
+if (joinHash) {
+  history.replaceState(null, '', location.pathname);
+  if (normCode(joinHash[1]) !== normCode(sync.state.code)) joinWith(joinHash[1]);
+}
+runSync();
