@@ -6,7 +6,7 @@
 // phones later, swap store.load/save for a backend (see README).
 // ---------------------------------------------------------------------------
 
-const VERSION = 3; // shown in Settings; keep in step with CACHE in sw.js
+const VERSION = 4; // shown in Settings; keep in step with CACHE in sw.js
 const KEY = 'sento:v1';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -15,7 +15,7 @@ const $ = (s, el = document) => el.querySelector(s);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-const freshState = () => ({ v: 1, names: { a: '', b: 'Moka' }, sentos: [], visits: [], deleted: [] });
+const freshState = () => ({ v: 1, names: { a: '', b: 'Moka' }, calendar: { url: '', key: '' }, sentos: [], visits: [], deleted: [] });
 
 const store = {
   load() {
@@ -111,9 +111,43 @@ function nudge(days) {
   return { level: 1, head: 'Seriously overdue', text: `${days} days?! Your shoulders are filing a complaint. Go as soon as you can.` };
 }
 
+const TOGETHER = 120; // minutes you both need free (soak + getting there)
+
+// How quiet a sento tends to be in the 30 minutes starting at `m` (minutes since midnight).
+function blockQuiet(m, h, weekend) {
+  if (m < h.open + 60) return 1;                       // just after opening
+  if (m >= 21 * 60 + 30) return 0.9;                   // late evening
+  if (m >= 17 * 60 + 30) return weekend ? 0.25 : 0.3;  // after-work rush
+  return weekend ? 0.4 : 0.65;                         // afternoon
+}
+const quietLabel = (m, h) =>
+  m < h.open + 60 ? 'Just after opening' : m >= 21 * 60 ? 'Late evening' : m >= 17 * 60 + 30 ? 'Evening, may be busy' : 'Afternoon';
+
+// With calendars: the quietest 2-hour window you're both free, per sento and day.
+function freeOptions(h, at, weekend, earliest, busy) {
+  let best = null;
+  for (let m = h.open; m + TOGETHER <= h.close; m += 30) {
+    const a = at(m), b = at(m + TOGETHER);
+    if (a < earliest || busy.some(([s, e]) => s < b && e > a)) continue;
+    const quiet = [0, 30, 60, 90].reduce((sum, k) => sum + blockQuiet(m + k, h, weekend), 0) / 4;
+    if (!best || quiet > best.quiet) best = { start: m, end: m + TOGETHER, quiet, label: `${quietLabel(m, h)} · both free` };
+  }
+  return best ? [best] : [];
+}
+
+// Without calendars: the usual quiet windows.
+function fixedOptions(h, at, earliest) {
+  const late = h.close >= 20 * 60;
+  return [
+    { start: h.open, end: Math.min(h.open + 60, h.close), label: 'Just after opening', quiet: 1 },
+    { start: Math.max(h.close - 120, h.open), end: h.close - 30, label: late ? 'Late evening' : 'Before closing', quiet: late ? 0.9 : 0.6 },
+  ].filter(o => o.end - o.start >= 30 && at(o.end) > earliest); // drop slots that are (nearly) over
+}
+
 function suggestions() {
   const now = new Date();
-  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const earliest = now.getTime() + 15 * 60000;
+  const busy = calReady() ? cal.busy : null;
   const since = daysSinceLast();
   // 0 = relaxed (spread across the week), 1 = overdue (strongly prefer sooner)
   const urgency = since === null ? 0.7 : Math.min(1, since / 10);
@@ -130,14 +164,10 @@ function suggestions() {
     for (const s of S.sentos) {
       const h = hoursOf(s);
       if (!h || s.closed?.includes(dow)) continue;
-      const late = h.close >= 20 * 60;
-      const options = [
-        { start: h.open, end: Math.min(h.open + 60, h.close), label: 'Just after opening', quiet: 1 },
-        { start: Math.max(h.close - 120, h.open), end: h.close - 30, label: late ? 'Late evening' : 'Before closing', quiet: late ? 0.9 : 0.6 },
-      ];
+      // Minutes since this day's midnight → timestamp (works past midnight too)
+      const at = m => new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, m).getTime();
+      const options = busy ? freeOptions(h, at, weekend, earliest, busy) : fixedOptions(h, at, earliest);
       for (const o of options) {
-        if (o.end - o.start < 30) continue;
-        if (d === 0 && o.end - 15 <= nowMin) continue; // already over today
         const sinceSento = lastAt[s.id] ? daysBetween(lastAt[s.id], date) : 30;
         const score =
           o.quiet * 1.5 +
@@ -227,10 +257,18 @@ function viewGo() {
   }
 
   const list = suggestions();
+  const withCal = calReady();
   const missingHours = S.sentos.filter(s => !hoursOf(s));
   h += `<h3 class="section">Good times this week</h3>`;
+  if (calSrc() && !withCal) {
+    h += `<p class="hint warn">${cal.error ? `Couldn’t check your calendars (${esc(cal.error)}).` : 'Checking your calendars…'} Showing the usual quiet times for now.</p>`;
+  } else if (withCal && cal.problems?.length) {
+    h += `<p class="hint warn">${cal.problems.map(esc).join(' ')}</p>`;
+  }
   if (!list.length) {
-    h += `<p class="empty-note">No open slots in the next 7 days${missingHours.length ? ' — add opening hours to your favourites' : ''}.</p>`;
+    h += `<p class="empty-note">${withCal
+      ? `No 2-hour window in the next 7 days when you’re both free and a favourite is open.`
+      : `No open slots in the next 7 days${missingHours.length ? ' — add opening hours to your favourites' : ''}.`}</p>`;
   } else {
     h += `<div class="list">${list.map((sl, i) => `
       <div class="row slot${i === 0 ? ' best' : ''}">
@@ -238,7 +276,9 @@ function viewGo() {
         <span class="grow"><b>${esc(sl.s.name)}</b><small>${esc(sl.label)}${sl.weekend ? ' · weekend, may be busier' : ''}</small></span>
         ${i === 0 ? '<span class="pill">Best bet</span>' : ''}
       </div>`).join('')}</div>
-      <p class="hint">Quietest right after opening and late in the evening. Closing days are skipped.</p>`;
+      <p class="hint">${withCal
+        ? `Times you’re both free for 2 hours, from your Google Calendars (checked ${esc(lastSynced(cal.fetchedAt))}). `
+        : calSrc() ? '' : 'Connect Google Calendar in Settings to only see times you’re both free. '}Quietest right after opening and late in the evening. Closing days are skipped.</p>`;
   }
   if (missingHours.length) {
     h += `<p class="hint warn">${missingHours.map(s => esc(s.name)).join(', ')} ${missingHours.length > 1 ? 'have' : 'has'} no hours yet, so ${missingHours.length > 1 ? 'they’re' : 'it’s'} not in the suggestions.</p>`;
@@ -431,6 +471,7 @@ function openSettings() {
       <label class="field"><span>Partner</span><input name="b" value="${esc(S.names.b)}"></label>
     </div>
     ${syncSection()}
+    ${calendarSection()}
     <section class="sync">
       <h3>Backup</h3>
       <p><b>Export</b> saves everything to a file (AirDrop works). <b>Import</b> merges a file back in: the newer edit wins, and deletions carry over.</p>
@@ -475,7 +516,7 @@ function syncSection() {
     </section>`;
   }
   return `<section class="sync">
-    <h3>Live sync <span class="sync-state" data-s="${sync.status}">${esc(syncStatusText())}</span></h3>
+    <h3>Live sync <span class="sync-state" id="sync-line" data-s="${sync.status}">${esc(syncStatusText())}</span></h3>
     <p>Shared code: <code>${esc(st.code)}</code><br>Both phones must show the same code.</p>
     <div class="two">
       <button type="button" class="btn primary" data-action="sync-invite">Invite ${esc(S.names.b || 'Moka')}</button>
@@ -582,7 +623,7 @@ const inviteLink = code => `${location.origin}${location.pathname}#join=${normCo
 
 function recordFor(id) {
   const u = sync.state.dirty[id];
-  if (id === 'names') return { id, kind: 'names', data: S.names, u };
+  if (id === 'names' || id === 'calendar') return { id, kind: id, data: S[id], u };
   const s = sentoOf(id);
   if (s) return { id, kind: 'sento', data: s, u };
   const v = visitOf(id);
@@ -595,6 +636,7 @@ function connect(code) {
   for (const r of [...S.sentos, ...S.visits]) dirty[r.id] = r.u || 1;
   for (const id of S.deleted) dirty[id] = Date.now();
   if (S.namesU) dirty.names = S.namesU;
+  if (S.calendarU) dirty.calendar = S.calendarU;
   sync.state = { code: prettyCode(code), dirty, at: 0 };
   sync.status = 'pending';
   saveSync();
@@ -613,8 +655,9 @@ function applyRemote(records) {
   let changed = false;
   for (const r of records) {
     if (sync.state.dirty[r.id]) continue; // our newer local edit is still on its way up
-    if (r.id === 'names') {
-      if (!r.deleted && r.u > (S.namesU || 0)) { S.names = { ...S.names, ...r.data }; S.namesU = r.u; changed = true; }
+    if (r.id === 'names' || r.id === 'calendar') {
+      const uKey = r.id + 'U';
+      if (!r.deleted && r.u > (S[uKey] || 0)) { S[r.id] = { ...S[r.id], ...r.data }; S[uKey] = r.u; changed = true; }
       continue;
     }
     const key = r.kind === 'sento' ? 'sentos' : r.kind === 'visit' ? 'visits' : null;
@@ -660,6 +703,7 @@ function runSync() {
       if (applyRemote(records)) {
         store.save(S);
         if (!sheet.open) render();
+        fetchCalendar(); // picks up a calendar link added on the other phone
       }
     } catch (err) {
       sync.status = 'error';
@@ -683,7 +727,7 @@ function scheduleSync() {
 function updateSyncDot() {
   const dot = $('#sync-dot');
   dot.dataset.s = sync.state.code ? (sync.status === 'ok' && Object.keys(sync.state.dirty).length ? 'pending' : sync.status) : 'off';
-  const line = $('.sync-state');
+  const line = $('#sync-line');
   if (line) { line.dataset.s = sync.status; line.textContent = syncStatusText(); }
 }
 
@@ -728,6 +772,101 @@ function invite() {
 }
 
 // ---------------------------------------------------------------------------
+// Google Calendar (via the Apps Script in google-apps-script/Code.gs)
+// The script returns only merged busy ranges [[startMs, endMs], …].
+// The link + key live in S.calendar, so live sync hands them to the other phone.
+// ---------------------------------------------------------------------------
+
+const CAL_KEY = 'sento:cal';
+const CAL_FRESH = 15 * 60000;     // refetch after 15 min
+const CAL_RETRY = 2 * 60000;      // after an error, wait before retrying
+const CAL_USABLE = 12 * 3600000;  // offline: trust busy times this old at most
+let cal = (() => { try { return JSON.parse(localStorage.getItem(CAL_KEY)) || {}; } catch { return {}; } })();
+let calBusy = null;
+
+function calSrc() {
+  const { url = '', key = '' } = S.calendar || {};
+  if (!url.trim() || !key.trim()) return '';
+  return `${url.trim()}${url.includes('?') ? '&' : '?'}key=${encodeURIComponent(key.trim())}`;
+}
+const calReady = () => !!calSrc() && cal.src === calSrc() && Array.isArray(cal.busy) && Date.now() - (cal.fetchedAt || 0) < CAL_USABLE;
+
+function fetchCalendar(force = false) {
+  const src = calSrc();
+  if (!src) return Promise.resolve();
+  if (calBusy) return calBusy;
+  if (!force && cal.src === src) {
+    if (!cal.error && Date.now() - (cal.fetchedAt || 0) < CAL_FRESH) return Promise.resolve();
+    if (cal.error && Date.now() - (cal.triedAt || 0) < CAL_RETRY) return Promise.resolve();
+  }
+  calBusy = (async () => {
+    const triedAt = Date.now();
+    try {
+      let data;
+      try {
+        const res = await fetch(src);
+        data = await res.json();
+      } catch {
+        throw new Error(navigator.onLine === false
+          ? 'offline'
+          : 'couldn’t read the link. Check the deployment is set to “Anyone”');
+      }
+      if (data.error) throw new Error(data.error === 'unauthorized' ? 'the key doesn’t match. Run setup again and copy the key' : data.error);
+      cal = { src, busy: data.busy || [], problems: data.problems || [], fetchedAt: Date.now(), triedAt };
+    } catch (err) {
+      // Keep the last good busy times for this link, if any
+      cal = cal.src === src ? { ...cal, error: err.message, triedAt } : { src, error: err.message, triedAt };
+    } finally {
+      try { localStorage.setItem(CAL_KEY, JSON.stringify(cal)); } catch {}
+      calBusy = null;
+      if (!sheet.open) render();
+      const line = $('#cal-line');
+      if (line) { line.dataset.s = calState(); line.textContent = calStatusText(); }
+    }
+  })();
+  return calBusy;
+}
+
+const calState = () => calBusy ? 'pending' : cal.error ? 'error' : cal.fetchedAt ? 'ok' : 'pending';
+function calStatusText() {
+  if (calBusy) return 'Checking…';
+  if (cal.error) return `Problem: ${cal.error}`;
+  if (cal.problems?.length) return 'Partly working';
+  return cal.fetchedAt ? `Checked ${lastSynced(cal.fetchedAt)}` : 'Not checked yet';
+}
+
+function calendarSection() {
+  if (!calSrc()) {
+    return `<section class="sync">
+      <h3>Google Calendar</h3>
+      <p>Only suggest times when you’re both free for 2 hours. Set up the helper script first (README → “Google Calendar suggestions”), then paste its web app URL and key here.</p>
+      <label class="field"><span>Web app URL</span><input name="calUrl" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url"></label>
+      <label class="field"><span>Key</span><input name="calKey" placeholder="From the setup log" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+      <button type="button" class="btn primary" data-action="cal-connect">Connect calendars</button>
+    </section>`;
+  }
+  return `<section class="sync">
+    <h3>Google Calendar <span class="sync-state" id="cal-line" data-s="${calState()}">${esc(calStatusText())}</span></h3>
+    <p>Suggestions only show 2-hour windows when you’re both free.</p>
+    ${(cal.problems || []).map(p => `<p class="hint warn">${esc(p)}</p>`).join('')}
+    <div class="two">
+      <button type="button" class="btn" data-action="cal-check">Check now</button>
+      <button type="button" class="btn" data-action="cal-off">Disconnect</button>
+    </div>
+  </section>`;
+}
+
+function setCalendar(url, key) {
+  S.calendar = { url, key };
+  S.calendarU = Date.now();
+  markDirty('calendar', S.calendarU);
+  cal = {};
+  try { localStorage.removeItem(CAL_KEY); } catch {}
+  store.save(S);
+  scheduleSync();
+}
+
+// ---------------------------------------------------------------------------
 // Wiring
 // ---------------------------------------------------------------------------
 
@@ -746,6 +885,27 @@ const actions = {
   },
   'sync-join': () => joinWith($('[name=joinCode]').value).then(() => sync.state.code && openSettings()),
   'sync-invite': invite,
+  'cal-connect': async () => {
+    const url = $('[name=calUrl]').value.trim();
+    const key = $('[name=calKey]').value.trim();
+    if (!/^https:\/\/script\.google(usercontent)?\.com\//.test(url)) { toast('That URL should start with https://script.google.com/'); return; }
+    if (!key) { toast('Paste the key from the setup log too'); return; }
+    setCalendar(url, key);
+    openSettings();
+    await fetchCalendar(true);
+    if (sheet.open) openSettings();
+    toast(cal.error ? `Calendar: ${cal.error}` : cal.problems?.length ? cal.problems[0] : 'Calendars connected 🎉', 5000);
+  },
+  'cal-check': async () => {
+    await fetchCalendar(true);
+    if (sheet.open) openSettings();
+    if (!cal.error && !cal.problems?.length) toast('Calendars look good');
+  },
+  'cal-off': () => {
+    if (!confirm('Stop using Google Calendar for suggestions on both phones?')) return;
+    setCalendar('', '');
+    openSettings();
+  },
   'sync-leave': () => {
     if (!confirm('Stop syncing on this phone? Your data stays here, and the shared copy stays online.')) return;
     disconnect();
@@ -778,9 +938,10 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
   if (!sheet.open) render();
   runSync();
+  fetchCalendar();
 });
 setInterval(() => { if (!document.hidden && !sheet.open) render(); }, 60000);
-setInterval(() => { if (!document.hidden) runSync(); }, 20000);
+setInterval(() => { if (!document.hidden) { runSync(); fetchCalendar(); } }, 20000);
 addEventListener('online', () => runSync());
 
 if ('serviceWorker' in navigator) {
@@ -802,3 +963,4 @@ if (joinHash) {
   if (normCode(joinHash[1]) !== normCode(sync.state.code)) joinWith(joinHash[1]);
 }
 runSync();
+fetchCalendar();
