@@ -6,6 +6,7 @@
 // phones later, swap store.load/save for a backend (see README).
 // ---------------------------------------------------------------------------
 
+const VERSION = 3; // shown in Settings; keep in step with CACHE in sw.js
 const KEY = 'sento:v1';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -438,6 +439,7 @@ function openSettings() {
         <button type="button" class="btn" data-action="import">Import</button>
       </div>
     </section>
+    <p class="hint">App version ${VERSION}</p>
     ${footer('Save', '<button class="btn danger" value="reset">Erase all</button>')}`,
   (fd, act) => {
     if (act === 'reset') {
@@ -474,10 +476,15 @@ function syncSection() {
   }
   return `<section class="sync">
     <h3>Live sync <span class="sync-state" data-s="${sync.status}">${esc(syncStatusText())}</span></h3>
-    <p>Shared code: <code>${esc(st.code)}</code></p>
+    <p>Shared code: <code>${esc(st.code)}</code><br>Both phones must show the same code.</p>
     <div class="two">
       <button type="button" class="btn primary" data-action="sync-invite">Invite ${esc(S.names.b || 'Moka')}</button>
       <button type="button" class="btn" data-action="sync-leave">Stop syncing</button>
+    </div>
+    <p>Different code on the other phone? Paste theirs here to join it. Your data comes along.</p>
+    <div class="join">
+      <input name="joinCode" placeholder="Partner’s code" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button type="button" class="btn" data-action="sync-join">Join</button>
     </div>
   </section>`;
 }
@@ -641,13 +648,14 @@ function runSync() {
         headers,
         body: JSON.stringify({ p_household: normCode(code), p_changes: changes }),
       });
-      if (!res.ok) throw new Error(`Sync failed (${res.status})`);
+      if (!res.ok) throw new Error(`error ${res.status}`);
       const records = await res.json();
       if (sync.state.code !== code) return; // disconnected meanwhile
       // Only clear what we sent; anything edited during the request stays dirty.
       for (const c of changes) if (sync.state.dirty[c.id] === c.u) delete sync.state.dirty[c.id];
       sync.state.at = Date.now();
       sync.status = 'ok';
+      sync.error = '';
       saveSync();
       if (applyRemote(records)) {
         store.save(S);
@@ -655,6 +663,7 @@ function runSync() {
       }
     } catch (err) {
       sync.status = 'error';
+      sync.error = err.message;
       console.warn(err);
     } finally {
       sync.busy = null;
@@ -682,7 +691,9 @@ function syncStatusText() {
   return {
     ok: `Synced ${sync.state.at ? lastSynced(sync.state.at) : ''}`,
     pending: 'Syncing…',
-    error: 'Offline — changes will sync when you’re back online',
+    error: navigator.onLine === false
+      ? 'Offline — changes will sync when you’re back online'
+      : `Can’t reach the sync server${sync.error ? ` (${sync.error})` : ''}`,
   }[sync.status] || 'Connecting…';
 }
 
@@ -692,18 +703,28 @@ async function joinWith(code) {
   if (sync.state.code && normCode(sync.state.code) !== code &&
       !confirm('This phone is already syncing with another code. Switch?')) return;
   await connect(code);
-  toast(sync.status === 'ok' ? 'Connected — you’re in sync' : 'Joined — will sync when online');
+  if (isIOS && !standalone) {
+    toast('Joined in Safari. In the home-screen app, paste the code in Settings too', 6000);
+  } else {
+    toast(sync.status === 'ok' ? 'Connected — you’re in sync' : 'Joined — will sync when online');
+  }
 }
 
-async function invite() {
+// iPhone keeps Safari and the home-screen app apart, so a link opened in Safari
+// doesn't connect the installed app.
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+const standalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+
+function invite() {
   const code = sync.state.code;
-  const text = `Join our Sento app 🛁\n${inviteLink(code)}\n\nOr open Settings → Live sync and paste this code:\n${code}`;
+  const text = `Join our Sento app 🛁\n\n1. Open ${location.origin}${location.pathname} in Safari, then Share → Add to Home Screen.\n2. Open the app from your home screen → Settings → Live sync → paste this code → Join:\n\n${code}`;
+  // Must run straight from the tap: iOS blocks the share sheet after an await.
   if (navigator.share) {
-    try { await navigator.share({ title: 'Sento invite', text }); } catch {}
+    navigator.share({ title: 'Sento invite', text }).catch(() => {});
     return;
   }
-  try { await navigator.clipboard.writeText(text); toast('Invite copied'); }
-  catch { prompt('Copy this invite:', text); }
+  if (!navigator.clipboard) { prompt('Copy this invite:', text); return; }
+  navigator.clipboard.writeText(text).then(() => toast('Invite copied'), () => prompt('Copy this invite:', text));
 }
 
 // ---------------------------------------------------------------------------
@@ -718,7 +739,11 @@ const actions = {
   'edit-sento': id => openSento(sentoOf(id)),
   export: exportData,
   import: () => $('#import-file').click(),
-  'sync-start': async () => { await connect(newCode()); openSettings(); invite(); },
+  'sync-start': () => {
+    connect(newCode());
+    openSettings();
+    invite();
+  },
   'sync-join': () => joinWith($('[name=joinCode]').value).then(() => sync.state.code && openSettings()),
   'sync-invite': invite,
   'sync-leave': () => {
@@ -740,12 +765,12 @@ document.addEventListener('click', e => {
   actions[t.dataset.action]?.(t.dataset.id, t);
 });
 
-function toast(msg) {
+function toast(msg, ms = 2600) {
   const t = $('#toast');
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => t.classList.remove('show'), 2600);
+  toast.timer = setTimeout(() => t.classList.remove('show'), ms);
 }
 
 // Keep "today" and open/closed status fresh, and pull your partner's changes.
@@ -759,7 +784,12 @@ setInterval(() => { if (!document.hidden) runSync(); }, 20000);
 addEventListener('online', () => runSync());
 
 if ('serviceWorker' in navigator) {
-  addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  // When a new version takes over, reload once so it's used straight away.
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController && !sheet.open) location.reload();
+  });
+  addEventListener('load', () => navigator.serviceWorker.register('sw.js').then(r => r.update()).catch(() => {}));
 }
 
 render();
