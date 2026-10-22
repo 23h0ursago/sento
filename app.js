@@ -6,7 +6,7 @@
 // phones later, swap store.load/save for a backend (see README).
 // ---------------------------------------------------------------------------
 
-const VERSION = 6; // shown in Settings; keep in step with CACHE in sw.js
+const VERSION = 7; // shown in Settings; keep in step with CACHE in sw.js
 const KEY = 'sento:v1';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -112,6 +112,86 @@ function weekSummary(s) {
   return parts.join(' · ');
 }
 
+// ---------------------------------------------------------------------------
+// Special baths (e.g. Kosugiyu's monthly おふろカレンダー)
+// Stored per sento as s.specials = [{ id, name, emoji, color, from, to }], dates YYYY-MM-DD.
+// ---------------------------------------------------------------------------
+
+// Emoji + colour picked from the bath's name; first match wins.
+const SPECIAL_STYLES = [
+  [/ミルク|牛乳|milk/i, '🥛', '#8DB8E8'],
+  [/ほうじ茶|緑茶|抹茶|茶|tea/i, '🍵', '#B08A64'],
+  [/ラベンダー|lavender/i, '💜', '#9B8FD6'],
+  [/カモミール|chamomile/i, '🌼', '#7DBE8A'],
+  [/オリーブ|olive/i, '🫒', '#8FBFB0'],
+  [/柚子|ゆず|ユズ|yuzu/i, '🍊', '#EDB43C'],
+  [/唐辛子|chil/i, '🌶️', '#A9B84E'],
+  [/ヨモギ|よもぎ|蓬|mugwort/i, '🌿', '#8DB46A'],
+  [/生姜|しょうが|ginger/i, '🫚', '#E2B75A'],
+  [/泡|bubble|foam/i, '🫧', '#E7A992'],
+  [/薬湯|herb/i, '🌿', '#E59F6B'],
+  [/桜|さくら|sakura|cherry/i, '🌸', '#F0A3C0'],
+  [/りんご|林檎|apple/i, '🍎', '#E8857A'],
+  [/菖蒲|iris/i, '🌱', '#7CB58C'],
+  [/炭酸|soda|carbon/i, '🫧', '#8FC8E0'],
+  [/酒|sake/i, '🍶', '#C2B89E'],
+  [/ローズ|薔薇|バラ|rose/i, '🌹', '#E58FA5'],
+  [/ミント|mint/i, '🌱', '#7CCBB5'],
+  [/レモン|lemon/i, '🍋', '#E6CF4A'],
+];
+const FALLBACK_COLORS = ['#E89A9A', '#9FB8E6', '#B4D38F', '#E6C27F', '#BFA3DE', '#8FD0C5'];
+
+function specialStyle(name) {
+  const hit = SPECIAL_STYLES.find(([re]) => re.test(name));
+  if (hit) return { emoji: hit[1], color: hit[2] };
+  let h = 0;
+  for (const c of name) h = (h * 31 + c.codePointAt(0)) % 9973;
+  return { emoji: '✨', color: FALLBACK_COLORS[h % FALLBACK_COLORS.length] };
+}
+
+// Specials running on a date, most specific (shortest) first, so "every day" baths come last.
+const span = sp => daysBetween(sp.from, sp.to);
+const specialsOn = (s, date) => (s.specials || []).filter(sp => sp.from <= date && date <= sp.to).sort((a, b) => span(a) - span(b));
+
+// Parse poster-style lines for a month ("2026-10"):
+//   毎日 ミルク風呂 · 2-4 ほうじ茶風呂 · 2〜4日 … · 30-11/1 JIKKO · 10/5 … · 5 …
+function parseSpecials(text, month) {
+  const [y, m] = month.split('-').map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  const date = (mm, dd) => ymd(new Date(y, mm - 1, dd));
+  const out = [], bad = [];
+  for (const raw of String(text).split('\n')) {
+    const line = raw
+      .replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)) // full-width digits
+      .replace(/[／]/g, '/')
+      .replace(/(\d)\s*日/g, '$1')
+      .trim();
+    if (!line) continue;
+    let hit = line.match(/^(?:毎日|every\s*day|daily)[\s:・、]*(.+)$/i);
+    if (hit) { out.push({ from: date(m, 1), to: date(m, lastDay), name: hit[1].trim() }); continue; }
+    hit = line.match(/^(?:(\d{1,2})\/)?(\d{1,2})(?:\s*(?:[-〜~～–—－]|から)\s*(?:(\d{1,2})\/)?(\d{1,2}))?[\s:・、]+(.+)$/);
+    if (!hit) { bad.push(raw.trim()); continue; }
+    const [, m1, d1, m2, d2, name] = hit;
+    let startM = m1 ? +m1 : m;
+    if (startM < m - 6) startM += 12;                // "1/2" on a December calendar is next January
+    let endM = m2 ? +m2 : startM;
+    const endD = d2 ? +d2 : +d1;
+    if (!m2 && d2 && endD < +d1) endM = startM + 1; // e.g. 30-1 runs into next month
+    if (endM < startM) endM += 12;                   // e.g. 12/31-1/2
+    const from = date(startM, +d1), to = date(endM, endD);
+    if (to < from || +d1 > 31 || endD > 31) { bad.push(raw.trim()); continue; }
+    out.push({ from, to, name: name.trim() });
+  }
+  return { specials: out.map(sp => ({ ...sp, ...specialStyle(sp.name) })), bad };
+}
+
+const rangeText = sp => {
+  const f = parseDay(sp.from), t = parseDay(sp.to);
+  const md = d => `${d.getMonth() + 1}/${d.getDate()}`;
+  if (sp.from === sp.to) return md(f);
+  return f.getMonth() === t.getMonth() ? `${md(f)}–${t.getDate()}` : `${md(f)}–${md(t)}`;
+};
+
 function openState(s) {
   if (!weekOf(s)) return null;
   const now = new Date();
@@ -208,7 +288,7 @@ function suggestions() {
           (weekend ? -0.6 : 0) +                    // weekends are busier
           (1 - d / 6) * urgency * 3 +               // nudge: longer gap → sooner slots
           Math.min(sinceSento, 30) / 30 * 0.6;      // rotate between favourites
-        slots.push({ s, date, d, start: o.start, end: o.end, label: o.label, weekend, score });
+        slots.push({ s, date, d, start: o.start, end: o.end, label: o.label, weekend, score, special: specialsOn(s, date)[0] });
       }
     }
   }
@@ -343,7 +423,7 @@ function viewGo() {
   if (!S.sentos.length) {
     return h + `<section class="empty-note">
       <p>Add your favourite sento with their hours and closing day, and we’ll suggest quiet times to go.</p>
-      <button class="btn" data-action="new-sento">Add a favourite</button></section>`;
+      <button class="btn" data-action="new-sento">Add a sento</button></section>`;
   }
 
   const list = suggestions();
@@ -358,12 +438,12 @@ function viewGo() {
   if (!list.length) {
     h += `<p class="empty-note">${withCal
       ? `No 2-hour window in the next 7 days when you’re both free and a favourite is open.`
-      : `No open slots in the next 7 days${missingHours.length ? ' — add opening hours to your favourites' : ''}.`}</p>`;
+      : `No open slots in the next 7 days${missingHours.length ? ' — add opening hours in the Sento tab' : ''}.`}</p>`;
   } else {
     h += `<div class="list">${list.map((sl, i) => `
       <div class="row slot${i === 0 ? ' best' : ''}">
         <span class="when"><b>${esc(dayWord(sl.date))}</b><small>${hhmm(sl.start)}–${hhmm(sl.end)}</small></span>
-        <span class="grow"><b>${esc(sl.s.name)}</b><small>${esc(sl.label)}${sl.weekend ? ' · weekend, may be busier' : ''}</small></span>
+        <span class="grow"><b>${esc(sl.s.name)}</b><small>${esc(sl.label)}${sl.weekend ? ' · weekend, may be busier' : ''}</small>${sl.special ? `<small class="special-line">${sl.special.emoji} ${esc(sl.special.name)}</small>` : ''}</span>
         ${i === 0 ? '<span class="pill">Best bet</span>' : ''}
       </div>`).join('')}</div>
       <p class="hint">${withCal
@@ -376,10 +456,21 @@ function viewGo() {
   return h;
 }
 
+// Sento tab: a playful month calendar (default) or the plain list.
+let sentoView = 'calendar';
+let calMonth = today().slice(0, 7);
+let calFilter = 'all';
+
+const SENTO_COLORS = ['#E2574C', '#3E7CC9', '#3FA36B', '#E59A2F', '#8C63C9', '#D9578E'];
+const sentoColor = s => SENTO_COLORS[S.sentos.slice().sort(byName).findIndex(x => x.id === s.id) % SENTO_COLORS.length];
+
 function viewSentos() {
   const list = S.sentos.slice().sort(byName);
-  return `
-    <div class="toolbar"><h2 class="page-title">Our favourites</h2><button class="btn primary small" data-action="new-sento">+ Add</button></div>
+  const seg = v => `<button class="seg-btn" aria-pressed="${sentoView === v}" data-action="sento-view" data-v="${v}">${v === 'calendar' ? '📅 Calendar' : '📋 List'}</button>`;
+  const head = `<div class="toolbar"><h2 class="page-title">Sento</h2><button class="btn primary small" data-action="new-sento">+ Add</button></div>
+    ${list.length ? `<div class="seg">${seg('calendar')}${seg('list')}</div>` : ''}`;
+  if (list.length && sentoView === 'calendar') return head + viewCalendar(list);
+  return `${head}
     ${list.length ? `<div class="list">${list.map(s => {
       const st = sentoStats(s.id);
       const os = openState(s);
@@ -392,7 +483,84 @@ function viewSentos() {
         ${os ? `<span class="status ${os.cls}">${esc(os.text)}</span>` : ''}
       </button>`;
     }).join('')}</div>`
-    : `<p class="empty-note">No favourites yet. Add the sento you love (or want to try).</p>`}`;
+    : `<p class="empty-note">No sento yet. Add the ones you love (or want to try).</p>`}`;
+}
+
+function viewCalendar(list) {
+  const only = list.length === 1 ? list[0] : sentoOf(calFilter);
+  const shown = only ? [only] : list;
+  const [y, m] = calMonth.split('-').map(Number);
+  const first = new Date(y, m - 1, 1);
+  const daysIn = new Date(y, m, 0).getDate();
+  const lead = (first.getDay() + 6) % 7; // Monday first
+  const now = today();
+  const went = new Set(S.visits.filter(v => shown.some(s => s.id === v.sentoId)).map(v => v.date));
+
+  let cells = '<span class="cal-blank"></span>'.repeat(lead);
+  for (let d = 1; d <= daysIn; d++) {
+    const date = ymd(new Date(y, m - 1, d));
+    const dow = new Date(y, m - 1, d).getDay();
+    const open = shown.filter(s => hoursOn(s, dow));
+    const main = open.flatMap(s => specialsOn(s, date)).sort((a, b) => span(a) - span(b))[0]; // only if it's open that day
+    const cls = ['cal-day'];
+    if (!open.length) cls.push('closed');
+    if (date === now) cls.push('today');
+    if (date < now) cls.push('past');
+    let info;
+    if (only) {
+      const h = hoursOn(only, dow);
+      info = h ? `<span class="cal-time">${hhmm(h.open)}</span>` : weekOf(only) ? '<span class="cal-time">休み</span>' : '';
+    } else {
+      info = `<span class="cal-dots">${open.map(s => `<i style="--dot:${sentoColor(s)}"></i>`).join('')}</span>`;
+    }
+    cells += `<button class="${cls.join(' ')}" ${main ? `style="--c:${main.color}"` : ''} data-action="cal-day" data-date="${date}" aria-label="${esc(dayWord(date))}${main ? `, ${esc(main.name)}` : ''}${open.length ? '' : ', closed'}">
+      <span class="cal-num">${d}</span>
+      ${main ? `<span class="cal-emoji">${main.emoji}</span>` : !open.length ? '<span class="cal-emoji sleepy">💤</span>' : ''}
+      ${info}
+      ${went.has(date) ? '<span class="hanko" aria-label="visited">湯</span>' : ''}
+    </button>`;
+  }
+
+  // This month's specials, like the poster's colourful blocks
+  const monthStart = ymd(first), monthEnd = ymd(new Date(y, m, 0));
+  const specials = shown.flatMap(s => (s.specials || [])
+    .filter(sp => sp.from <= monthEnd && sp.to >= monthStart)
+    .map(sp => ({ sp, s })))
+    .sort((a, b) => a.sp.from.localeCompare(b.sp.from));
+  const everyDay = specials.filter(x => span(x.sp) > 27);
+  const ranged = specials.filter(x => span(x.sp) <= 27);
+  const card = ({ sp, s }) => `<button class="special-card" style="--c:${sp.color}" data-action="edit-special" data-id="${esc(sp.id)}">
+      <span class="sp-emoji">${sp.emoji}</span>
+      <span class="sp-when">${span(sp) > 27 ? '毎日' : esc(rangeText(sp))}</span>
+      <span class="sp-name">${esc(sp.name)}</span>
+      ${only ? '' : `<span class="sp-sento"><i style="--dot:${sentoColor(s)}"></i>${esc(s.name)}</span>`}
+    </button>`;
+
+  const monthName = first.toLocaleDateString(undefined, { month: 'long' });
+  return `
+    ${list.length > 1 ? `<div class="chips cal-filter">
+      <button class="chip" aria-pressed="${!only}" data-action="cal-filter" data-id="all">All</button>
+      ${list.map(s => `<button class="chip" aria-pressed="${only?.id === s.id}" data-action="cal-filter" data-id="${s.id}"><i class="dot" style="--dot:${sentoColor(s)}"></i>${esc(s.name)}</button>`).join('')}
+    </div>` : ''}
+    <section class="cal cute">
+      <header class="cal-head">
+        <button class="cal-nav" data-action="cal-month" data-d="-1" aria-label="Previous month">‹</button>
+        <div class="cal-title">
+          <span class="cal-year">${y}</span>
+          <span class="cal-month">${m}<small>月</small></span>
+          <span class="cal-name">${esc(monthName)} ♨</span>
+        </div>
+        <button class="cal-nav" data-action="cal-month" data-d="1" aria-label="Next month">›</button>
+      </header>
+      ${only ? `<p class="cal-hours">🕒 ${esc(weekSummary(only))}</p>` : ''}
+      <div class="cal-week">${WEEK_ORDER.map(d => `<span class="${d === 0 || d === 6 ? 'we' : ''}">${'日月火水木金土'[d]}</span>`).join('')}</div>
+      <div class="cal-grid">${cells}</div>
+      ${calMonth !== now.slice(0, 7) ? '<button class="link cal-today" data-action="cal-month" data-d="0">Back to this month</button>' : ''}
+    </section>
+    <div class="toolbar"><h3 class="section">Special baths ${specials.length ? `<span class="count">${specials.length}</span>` : ''}</h3>
+      <button class="btn small" data-action="add-specials">+ Add</button></div>
+    ${specials.length ? `${everyDay.map(card).join('')}<div class="special-grid">${ranged.map(card).join('')}</div>`
+      : `<p class="empty-note cute">No special baths this month yet 🫧<br><small>Got a sento’s monthly bath calendar? Tap <b>+ Add</b> and type it in.</small></p>`}`;
 }
 
 function viewHistory() {
@@ -512,7 +680,7 @@ function copyMondayHours() {
 function openSento(s) {
   const isNew = !sentoOf(s.id);
   const st = isNew ? null : sentoStats(s.id);
-  openSheet(isNew ? 'Add a favourite' : s.name, `
+  openSheet(isNew ? 'Add a sento' : s.name, `
     <label class="field"><span>Name</span><input name="name" value="${esc(s.name)}" placeholder="e.g. Kosugiyu" autocomplete="off"></label>
     <fieldset class="field">
       <legend>Opening hours</legend>
@@ -557,7 +725,7 @@ function openVisit(v) {
         <option value="__new" ${pickNew ? 'selected' : ''}>+ Somewhere new…</option>
       </select>
     </label>
-    <label class="field" id="new-sento" ${pickNew ? '' : 'hidden'}><span>New sento name</span><input name="newSento" autocomplete="off" placeholder="Added to your favourites"></label>
+    <label class="field" id="new-sento" ${pickNew ? '' : 'hidden'}><span>New sento name</span><input name="newSento" autocomplete="off" placeholder="Added to your Sento tab"></label>
     <fieldset class="field"><legend>Rating <em>optional</em> <button type="button" class="link" data-clear-rating>clear</button></legend>
       <div class="stars">${[5, 4, 3, 2, 1].map(n => `
         <input type="radio" id="r${n}" name="rating" value="${n}" ${v.rating === n ? 'checked' : ''}><label for="r${n}" aria-label="${n} star${n > 1 ? 's' : ''}">★</label>`).join('')}
@@ -591,7 +759,7 @@ function openVisit(v) {
       const s = touch({ id: uid(), name, notes: '' });
       S.sentos.push(s);
       sentoId = s.id;
-      toast(`${name} added — set its hours in Favourites`);
+      toast(`${name} added — set its hours in the Sento tab`);
     }
     const photos = fd.get('photos').split(',').filter(Boolean);
     for (const id of v.photos || []) if (!photos.includes(id)) forgetPhoto(id); // removed with ×
@@ -650,6 +818,104 @@ function discardPhotoDraft() {
 }
 // The close event arrives a moment later; skip it if another sheet is already open.
 sheet.addEventListener('close', () => { if (!sheet.open) discardPhotoDraft(); });
+
+// Tap a calendar day: hours, special baths and visits for that day.
+function openDay(date) {
+  const dow = parseDay(date).getDay();
+  const shown = sentoOf(calFilter) ? [sentoOf(calFilter)] : S.sentos.slice().sort(byName);
+  const visits = S.visits.filter(v => v.date === date);
+  const title = parseDay(date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  openSheet(title, `
+    ${shown.map(s => {
+      const h = hoursOn(s, dow);
+      const sps = specialsOn(s, date);
+      const vs = visits.filter(v => v.sentoId === s.id);
+      return `<section class="day-card cute">
+        <h3><i class="dot" style="--dot:${sentoColor(s)}"></i>${esc(s.name)}
+          <span class="status ${h ? 'on' : 'off'}">${h ? `${hhmm(h.open)}–${hhmm(h.close)}` : weekOf(s) ? 'Closed 💤' : 'Hours not set'}</span></h3>
+        ${sps.map(sp => `<button type="button" class="special-pill" style="--c:${sp.color}" data-action="edit-special" data-id="${esc(sp.id)}">
+          <span>${sp.emoji}</span><b>${esc(sp.name)}</b><small>${span(sp) > 27 ? 'every day' : esc(rangeText(sp))}</small></button>`).join('')}
+        ${vs.map(v => `<button type="button" class="went" data-action="edit-visit" data-id="${v.id}"><span class="hanko">湯</span> You went! ${stars(v.rating)}${v.photos?.length ? ` 📷 ${v.photos.length}` : ''}</button>`).join('')}
+      </section>`;
+    }).join('')}
+    <div class="two">
+      <button type="button" class="btn" data-action="add-special" data-date="${date}">+ Special bath</button>
+      ${date <= today() ? `<button type="button" class="btn primary" data-action="log" data-date="${date}" data-sento="${shown.length === 1 ? shown[0].id : ''}">+ Log a visit</button>` : ''}
+    </div>`, null);
+}
+
+const emojiPicks = ['🥛', '🍵', '🌿', '💜', '🌼', '🫒', '🫧', '🍊', '🌶️', '🫚', '🌸', '🍎', '🍋', '🌹', '🍶', '✨'];
+const sentoOptions = selected => S.sentos.slice().sort(byName)
+  .map(s => `<option value="${s.id}" ${s.id === selected ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+
+function openSpecial(sp, sentoId) {
+  const isNew = !sp.id;
+  openSheet(isNew ? 'Special bath' : `${sp.emoji} ${sp.name}`, `
+    <label class="field"><span>Sento</span><select name="sentoId">${sentoOptions(sentoId)}</select></label>
+    <label class="field"><span>Bath</span><input name="name" value="${esc(sp.name || '')}" placeholder="e.g. 柚子生姜風呂" autocomplete="off"></label>
+    <div class="two">
+      <label class="field"><span>From</span><input type="date" name="from" value="${esc(sp.from)}"></label>
+      <label class="field"><span>To</span><input type="date" name="to" value="${esc(sp.to)}"></label>
+    </div>
+    <fieldset class="field"><legend>Emoji <em>picked from the name if you skip this</em></legend>
+      <div class="emoji-picks">${emojiPicks.map(e => `<label><input type="radio" name="emoji" value="${e}" ${sp.emoji === e && !isNew ? 'checked' : ''}><span>${e}</span></label>`).join('')}</div>
+    </fieldset>
+    ${footer(isNew ? 'Add' : 'Save', isNew ? '' : deleteBtn)}`,
+  (fd, act) => {
+    const owner = S.sentos.find(s => (s.specials || []).some(x => x.id === sp.id));
+    if (act === 'delete') {
+      owner.specials = owner.specials.filter(x => x.id !== sp.id);
+      touch(owner);
+      return;
+    }
+    const name = fd.get('name').trim();
+    const from = fd.get('from'), to = fd.get('to') || from;
+    if (!name) { toast('Name the bath'); return false; }
+    if (!from || to < from) { toast('Check the dates'); return false; }
+    const style = specialStyle(name);
+    const chosen = fd.get('emoji');
+    const updated = { id: sp.id || uid(), name, from, to, emoji: chosen || style.emoji, color: style.color };
+    if (owner) { owner.specials = owner.specials.filter(x => x.id !== sp.id); touch(owner); }
+    const target = sentoOf(fd.get('sentoId'));
+    target.specials = [...(target.specials || []), updated];
+    touch(target);
+  });
+}
+
+// Add a month of specials at once, in the poster's own format.
+function openSpecialsBulk(sentoId) {
+  openSheet('Add special baths', `
+    <div class="two">
+      <label class="field"><span>Sento</span><select name="sentoId">${sentoOptions(sentoId)}</select></label>
+      <label class="field"><span>Month</span><input type="month" name="month" value="${calMonth}"></label>
+    </div>
+    <label class="field"><span>One bath per line</span>
+      <textarea name="bulk" rows="7" placeholder="毎日 ミルク風呂&#10;2-4 ほうじ茶風呂&#10;9-11 ラベンダー刻み風呂&#10;30-11/1 JIKKO" autocapitalize="off"></textarea>
+    </label>
+    <div id="bulk-preview" class="bulk-preview"></div>
+    ${footer('Add to calendar')}`,
+  fd => {
+    const { specials, bad } = parseSpecials(fd.get('bulk'), fd.get('month') || calMonth);
+    if (!specials.length) { toast(bad.length ? `Couldn’t read: ${bad[0]}` : 'Type at least one bath'); return false; }
+    const s = sentoOf(fd.get('sentoId'));
+    s.specials = [...(s.specials || []), ...specials.map(sp => ({ id: uid(), ...sp }))];
+    touch(s);
+    calFilter = s.id;
+    calMonth = (fd.get('month') || calMonth);
+    toast(`Added ${specials.length} special bath${specials.length > 1 ? 's' : ''} 🎉`);
+  });
+}
+
+function updateBulkPreview() {
+  const box = $('#bulk-preview');
+  if (!box) return;
+  const { specials, bad } = parseSpecials(sheetForm.elements.bulk.value, sheetForm.elements.month.value || calMonth);
+  box.innerHTML = specials.map(sp => `<span class="special-pill" style="--c:${sp.color}"><span>${sp.emoji}</span><b>${esc(sp.name)}</b><small>${span(sp) > 27 ? 'every day' : esc(rangeText(sp))}</small></span>`).join('')
+    + bad.map(b => `<p class="hint warn">Can’t read “${esc(b)}”. Try “2-4 name”.</p>`).join('');
+}
+sheetForm.addEventListener('input', e => {
+  if (e.target.name === 'bulk' || e.target.name === 'month') updateBulkPreview();
+});
 
 function openSettings() {
   openSheet('Settings', `
@@ -1241,7 +1507,26 @@ function setCalendar(url, key) {
 
 const actions = {
   settings: openSettings,
-  log: () => openVisit({ id: uid(), date: today(), sentoId: pastVisits()[0]?.sentoId, rating: 0, note: '' }),
+  log: (_, el) => openVisit({ id: uid(), date: el?.dataset.date || today(), sentoId: el?.dataset.sento || pastVisits()[0]?.sentoId, rating: 0, note: '' }),
+  'sento-view': (_, el) => { sentoView = el.dataset.v; render(); },
+  'cal-filter': id => { calFilter = id; render(); },
+  'cal-month': (_, el) => {
+    const d = Number(el.dataset.d);
+    if (!d) calMonth = today().slice(0, 7);
+    else { const [y, m] = calMonth.split('-').map(Number); calMonth = ymd(new Date(y, m - 1 + d, 1)).slice(0, 7); }
+    render();
+  },
+  'cal-day': (_, el) => openDay(el.dataset.date),
+  'edit-special': id => {
+    const s = S.sentos.find(x => (x.specials || []).some(sp => sp.id === id));
+    if (s) openSpecial(s.specials.find(sp => sp.id === id), s.id);
+  },
+  'add-special': (_, el) => {
+    if (!S.sentos.length) { toast('Add a sento first'); return; }
+    const date = el.dataset.date || today();
+    openSpecial({ from: date, to: date }, sentoOf(calFilter)?.id || S.sentos.slice().sort(byName)[0].id);
+  },
+  'add-specials': () => openSpecialsBulk(sentoOf(calFilter)?.id || S.sentos.slice().sort(byName)[0]?.id),
   'edit-visit': id => openVisit(visitOf(id)),
   'new-sento': () => openSento({ id: uid(), name: '', closed: [] }),
   'edit-sento': id => openSento(sentoOf(id)),

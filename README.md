@@ -39,6 +39,20 @@ Each phone keeps a full offline copy and syncs on open, every 20 seconds while o
 
 Settings → **Export** / **Import** still works as a backup.
 
+## Sento calendar
+
+The **Sento** tab opens on a month calendar. Each day shows the opening time (or 休み on closing days), the special bath's emoji, and a red 湯 stamp on days you went. Tap a day for its hours, special baths and visits. Under the calendar, the month's special baths are listed as colourful cards.
+
+To add a sento's monthly bath calendar, tap **+ Add** under Special baths, pick the sento and month, and type one bath per line in the poster's format:
+
+```
+毎日 ミルク風呂
+2-4 ほうじ茶風呂
+30-11/1 JIKKO
+```
+
+Emoji and colours are picked from the bath's name. Tap any special to edit or delete it.
+
 ## さっぱり photo diary
 
 When logging a visit, add photos with 🤳 **Selfie** (front camera) or 🖼 **Choose**. Every photo appears in the **さっぱり** tab as a grid grouped by month. Tap one to see it large with the sento, date, rating and note.
