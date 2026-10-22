@@ -6,7 +6,7 @@
 // phones later, swap store.load/save for a backend (see README).
 // ---------------------------------------------------------------------------
 
-const VERSION = 4; // shown in Settings; keep in step with CACHE in sw.js
+const VERSION = 5; // shown in Settings; keep in step with CACHE in sw.js
 const KEY = 'sento:v1';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -71,25 +71,59 @@ const lastWord = date => {
   return w === 'Today' || w === 'Yesterday' ? w.toLowerCase() : w;
 };
 
-// Opening/closing in minutes since midnight; a close at or before opening means after midnight.
-function hoursOf(s) {
+// Weekly schedule, index 0 = Sunday: { open: '15:00', close: '00:00' } or null when closed.
+// Returns null if hours were never set. Older favourites stored one open/close plus closed days.
+function weekOf(s) {
+  if (Array.isArray(s.week)) return s.week;
   if (!s.open || !s.close) return null;
-  const open = mins(s.open);
-  let close = mins(s.close);
+  return DAYS.map((_, d) => s.closed?.includes(d) ? null : { open: s.open, close: s.close });
+}
+
+// Opening/closing on a weekday in minutes since midnight; a close at or before opening means after midnight.
+function hoursOn(s, dow) {
+  const day = weekOf(s)?.[dow];
+  if (!day?.open || !day?.close) return null;
+  const open = mins(day.open);
+  let close = mins(day.close);
   if (close <= open) close += 1440;
   return { open, close };
 }
 
+const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Mon → Sun
+
+// "Mon–Fri 15:00–00:00 · Sat–Sun 14:00–00:00 · Closed Thu"
+function weekSummary(s) {
+  const week = weekOf(s);
+  if (!week) return 'Hours not set';
+  const runs = [];
+  for (const d of WEEK_ORDER) {
+    const key = week[d] ? `${week[d].open}–${week[d].close}` : '';
+    const last = runs[runs.length - 1];
+    if (last && last.key === key) last.days.push(d);
+    else runs.push({ key, days: [d] });
+  }
+  const span = days => days.length > 2 ? `${DAYS[days[0]]}–${DAYS[days[days.length - 1]]}` : days.map(d => DAYS[d]).join(', ');
+  const open = runs.filter(r => r.key);
+  const closed = WEEK_ORDER.filter(d => !week[d]);
+  const parts = new Set(open.map(r => r.key)).size === 1
+    ? [open[0].key]
+    : open.map(r => `${span(r.days)} ${r.key}`);
+  if (closed.length) parts.push(`Closed ${closed.map(d => DAYS[d]).join(', ')}`);
+  return parts.join(' · ');
+}
+
 function openState(s) {
+  if (!weekOf(s)) return null;
   const now = new Date();
-  const h = hoursOf(s);
-  if (s.closed?.includes(now.getDay())) return { cls: 'off', text: 'Closed today' };
-  if (!h) return null;
-  let t = now.getHours() * 60 + now.getMinutes();
+  const dow = now.getDay();
+  const t = now.getHours() * 60 + now.getMinutes();
   // Still inside yesterday's after-midnight hours?
-  if (t < h.open && t + 1440 < h.close) t += 1440;
-  if (t >= h.open && t < h.close) return { cls: 'on', text: `Open till ${s.close}` };
-  if (t < h.open) return { cls: '', text: `Opens ${s.open}` };
+  const y = hoursOn(s, (dow + 6) % 7);
+  if (y && t + 1440 < y.close) return { cls: 'on', text: `Open till ${hhmm(y.close)}` };
+  const h = hoursOn(s, dow);
+  if (!h) return { cls: 'off', text: 'Closed today' };
+  if (t >= h.open && t < h.close) return { cls: 'on', text: `Open till ${hhmm(h.close)}` };
+  if (t < h.open) return { cls: '', text: `Opens ${hhmm(h.open)}` };
   return { cls: '', text: 'Closed now' };
 }
 
@@ -162,8 +196,8 @@ function suggestions() {
     const dow = day.getDay();
     const weekend = dow === 0 || dow === 6;
     for (const s of S.sentos) {
-      const h = hoursOf(s);
-      if (!h || s.closed?.includes(dow)) continue;
+      const h = hoursOn(s, dow);
+      if (!h) continue; // closed that day, or no hours set
       // Minutes since this day's midnight → timestamp (works past midnight too)
       const at = m => new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, m).getTime();
       const options = busy ? freeOptions(h, at, weekend, earliest, busy) : fixedOptions(h, at, earliest);
@@ -197,17 +231,17 @@ function suggestions() {
 // ---------------------------------------------------------------------------
 
 // Monday-based week number (1970-01-01 was a Thursday).
-const weekOf = date => Math.floor((dayNum(date) + 3) / 7);
+const weekNum = date => Math.floor((dayNum(date) + 3) / 7);
 
 function streaks() {
-  const weeks = [...new Set(S.visits.filter(v => v.date <= today()).map(v => weekOf(v.date)))].sort((a, b) => a - b);
+  const weeks = [...new Set(S.visits.filter(v => v.date <= today()).map(v => weekNum(v.date)))].sort((a, b) => a - b);
   let longest = 0, run = 0;
   weeks.forEach((w, i) => {
     run = i && w === weeks[i - 1] + 1 ? run + 1 : 1;
     longest = Math.max(longest, run);
   });
   // Current streak stays alive through this week even before you’ve gone.
-  const thisWeek = weekOf(today());
+  const thisWeek = weekNum(today());
   const last = weeks[weeks.length - 1];
   const current = last === thisWeek || last === thisWeek - 1 ? run : 0;
   return { longest, current };
@@ -258,7 +292,7 @@ function viewGo() {
 
   const list = suggestions();
   const withCal = calReady();
-  const missingHours = S.sentos.filter(s => !hoursOf(s));
+  const missingHours = S.sentos.filter(s => !weekOf(s));
   h += `<h3 class="section">Good times this week</h3>`;
   if (calSrc() && !withCal) {
     h += `<p class="hint warn">${cal.error ? `Couldn’t check your calendars (${esc(cal.error)}).` : 'Checking your calendars…'} Showing the usual quiet times for now.</p>`;
@@ -296,7 +330,7 @@ function viewSentos() {
       return `<button class="row sento" data-action="edit-sento" data-id="${s.id}">
         <span class="grow">
           <b>${esc(s.name)}</b>
-          <small>${s.open && s.close ? `${esc(s.open)}–${esc(s.close)}` : 'Hours not set'}${s.closed?.length ? ` · Closed ${s.closed.slice().sort().map(d => DAYS[d]).join(', ')}` : ''}</small>
+          <small>${esc(weekSummary(s))}</small>
           <small>${st.count ? `${st.count} visit${st.count > 1 ? 's' : ''} · last ${esc(lastWord(st.last))}` : 'Not visited yet'}${st.avg ? ` · ★ ${st.avg.toFixed(1)}` : ''}</small>
         </span>
         ${os ? `<span class="status ${os.cls}">${esc(os.text)}</span>` : ''}
@@ -376,14 +410,42 @@ sheetForm.addEventListener('submit', e => {
 sheet.addEventListener('click', e => {
   if (e.target === sheet || e.target.closest('[data-close]')) sheet.close();
   if (e.target.closest('[data-clear-rating]')) sheetForm.querySelectorAll('[name=rating]').forEach(r => (r.checked = false));
+  if (e.target.closest('[data-copy-hours]')) copyMondayHours();
 });
 sheetForm.addEventListener('change', e => {
   if (e.target.name === 'sentoId') $('#new-sento').hidden = e.target.value !== '__new';
+  if (/^closed\d$/.test(e.target.name)) setDayClosed(e.target.closest('.day-row'), e.target.checked);
 });
 
-function dayChips(selected = []) {
-  return `<div class="chips">${[1, 2, 3, 4, 5, 6, 0].map(d => `
-    <label class="chip-check"><input type="checkbox" name="closed" value="${d}" ${selected.includes(d) ? 'checked' : ''}><span>${DAYS[d]}</span></label>`).join('')}</div>`;
+function weekRows(s) {
+  const week = weekOf(s) || DAYS.map(() => ({ open: '15:00', close: '00:00' }));
+  return `<div class="week">${WEEK_ORDER.map(d => {
+    const day = week[d];
+    const shown = day || week.find(Boolean) || { open: '15:00', close: '00:00' };
+    return `<div class="day-row${day ? '' : ' is-closed'}">
+      <span class="day-name">${DAYS[d]}</span>
+      <input type="time" name="open${d}" value="${esc(shown.open)}" aria-label="${DAYS_LONG[d]} opens" ${day ? '' : 'disabled'}>
+      <span class="dash">–</span>
+      <input type="time" name="close${d}" value="${esc(shown.close)}" aria-label="${DAYS_LONG[d]} closes" ${day ? '' : 'disabled'}>
+      <label class="closed-toggle"><input type="checkbox" name="closed${d}" ${day ? '' : 'checked'}><span>Closed</span></label>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function setDayClosed(row, closed) {
+  row.classList.toggle('is-closed', closed);
+  row.querySelectorAll('input[type=time]').forEach(i => (i.disabled = closed));
+}
+
+function copyMondayHours() {
+  const open = sheetForm.elements.open1.value;
+  const close = sheetForm.elements.close1.value;
+  for (const d of WEEK_ORDER) {
+    if (sheetForm.elements[`closed${d}`].checked) continue;
+    sheetForm.elements[`open${d}`].value = open;
+    sheetForm.elements[`close${d}`].value = close;
+  }
+  toast('Copied to every open day');
 }
 
 function openSento(s) {
@@ -391,11 +453,11 @@ function openSento(s) {
   const st = isNew ? null : sentoStats(s.id);
   openSheet(isNew ? 'Add a favourite' : s.name, `
     <label class="field"><span>Name</span><input name="name" value="${esc(s.name)}" placeholder="e.g. Kosugiyu" autocomplete="off"></label>
-    <div class="two">
-      <label class="field"><span>Opens</span><input type="time" name="open" value="${esc(s.open || '15:00')}"></label>
-      <label class="field"><span>Closes</span><input type="time" name="close" value="${esc(s.close || '00:00')}"></label>
-    </div>
-    <fieldset class="field"><legend>Regular closing day</legend>${dayChips(s.closed)}</fieldset>
+    <fieldset class="field">
+      <legend>Opening hours</legend>
+      ${weekRows(s)}
+      <button type="button" class="link copy-hours" data-copy-hours>Copy Monday’s hours to every open day</button>
+    </fieldset>
     <label class="field"><span>Notes <em>optional</em></span><textarea name="notes" rows="2" placeholder="Address, what you love about it…">${esc(s.notes)}</textarea></label>
     ${st?.count ? `<p class="hint">${st.count} visit${st.count > 1 ? 's' : ''} logged here.</p>` : ''}
     ${footer(isNew ? 'Add' : 'Save', isNew ? '' : deleteBtn)}`,
@@ -409,13 +471,11 @@ function openSento(s) {
     }
     const name = fd.get('name').trim();
     if (!name) { toast('Give it a name'); return false; }
-    Object.assign(s, {
-      name,
-      open: fd.get('open'),
-      close: fd.get('close'),
-      closed: fd.getAll('closed').map(Number),
-      notes: fd.get('notes').trim(),
-    });
+    const week = DAYS.map((_, d) => fd.get(`closed${d}`) ? null : { open: fd.get(`open${d}`) || '', close: fd.get(`close${d}`) || '' });
+    const blank = WEEK_ORDER.find(d => week[d] && (!week[d].open || !week[d].close));
+    if (blank !== undefined) { toast(`Fill in ${DAYS_LONG[blank]}’s hours, or mark it closed`); return false; }
+    Object.assign(s, { name, week, notes: fd.get('notes').trim() });
+    delete s.open; delete s.close; delete s.closed; // replaced by `week`
     touch(s);
     if (isNew) S.sentos.push(s);
   });
@@ -453,7 +513,7 @@ function openVisit(v) {
     if (sentoId === '__new') {
       const name = (fd.get('newSento') || '').trim();
       if (!name) { toast('Name the new sento'); return false; }
-      const s = touch({ id: uid(), name, open: '', close: '', closed: [], notes: '' });
+      const s = touch({ id: uid(), name, notes: '' });
       S.sentos.push(s);
       sentoId = s.id;
       toast(`${name} added — set its hours in Favourites`);
@@ -669,7 +729,10 @@ function applyRemote(records) {
     } else if (!local) {
       S[key].push(r.data); changed = true;
     } else if (r.u > (local.u || 0)) {
-      Object.assign(local, r.data); changed = true;
+      // Replace contents (not merge) so removed fields go too, but keep the same object.
+      for (const k of Object.keys(local)) if (!(k in r.data)) delete local[k];
+      Object.assign(local, r.data);
+      changed = true;
     }
   }
   return changed;

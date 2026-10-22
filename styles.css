@@ -313,23 +313,29 @@ textarea { resize: vertical; }
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip-check { position: relative; }
-.chip-check input { position: absolute; opacity: 0; width: 1px; height: 1px; min-height: 0; }
-.chip-check span {
+/* Weekly opening hours */
+.week { display: grid; gap: 6px; }
+.day-row { display: flex; align-items: center; gap: 6px; }
+.day-name { width: 34px; flex: none; font-size: 14px; font-weight: 650; }
+.day-row input[type="time"] { flex: 1; min-width: 0; min-height: 40px; padding: 8px; text-align: center; }
+.day-row .dash { color: var(--muted); }
+.closed-toggle { position: relative; flex: none; }
+.closed-toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; min-height: 0; }
+.closed-toggle span {
   display: inline-block;
-  min-width: 48px;
-  padding: 9px 10px;
-  text-align: center;
-  font-size: 14px;
+  padding: 8px 10px;
+  font-size: 13px;
   font-weight: 600;
   border: 1px solid var(--line);
   border-radius: 99px;
   background: var(--bg);
   cursor: pointer;
 }
-.chip-check input:checked + span { background: var(--red); border-color: var(--red); color: #fff; }
-.chip-check input:focus-visible + span { outline: 2px solid var(--accent); }
+.closed-toggle input:checked + span { background: var(--red); border-color: var(--red); color: #fff; }
+.closed-toggle input:focus-visible + span { outline: 2px solid var(--accent); }
+.day-row.is-closed .day-name { color: var(--red); }
+.day-row.is-closed input[type="time"] { opacity: .35; }
+.copy-hours { justify-self: start; margin-top: 6px; padding: 4px 0; }
 
 .stars { display: inline-flex; flex-direction: row-reverse; justify-content: flex-end; gap: 4px; }
 .stars input { position: absolute; opacity: 0; width: 1px; height: 1px; min-height: 0; }
