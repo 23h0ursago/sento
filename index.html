@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Sento</title>
+  <meta name="description" content="Plan and track sento visits together.">
+  <meta name="theme-color" content="#22385A">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Sento">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="yu" aria-hidden="true">ゆ</span>
+      <div>
+        <h1>Sento</h1>
+        <p id="subtitle"></p>
+      </div>
+    </div>
+    <button class="icon-btn" data-action="settings" aria-label="Settings">
+      <svg viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+    </button>
+  </header>
+
+  <main id="view"></main>
+
+  <nav class="tabs" aria-label="Sections">
+    <button data-tab="go">
+      <svg viewBox="0 0 24 24"><path d="M7 13a5 5 0 1 0 10 0"/><path d="M9.5 13c-1-1.2 1-2.4 0-3.6s1-2.4 0-3.6M14.5 13c-1-1.2 1-2.4 0-3.6s1-2.4 0-3.6"/></svg>
+      <span>Should we go?</span>
+    </button>
+    <button data-tab="sentos">
+      <svg viewBox="0 0 24 24"><path d="M12 21s-6.5-5.8-6.5-10.5a6.5 6.5 0 0 1 13 0C18.5 15.2 12 21 12 21z"/><circle cx="12" cy="10.5" r="2.3"/></svg>
+      <span>Favourites</span>
+    </button>
+    <button data-tab="history">
+      <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>
+      <span>History</span>
+    </button>
+  </nav>
+
+  <dialog id="sheet"><form method="dialog" id="sheet-form" novalidate></form></dialog>
+  <input type="file" id="import-file" accept="application/json,.json" hidden>
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
