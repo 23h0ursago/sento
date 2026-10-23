@@ -6,7 +6,7 @@
 // phones later, swap store.load/save for a backend (see README).
 // ---------------------------------------------------------------------------
 
-const VERSION = 12; // shown in Settings; keep in step with CACHE in sw.js
+const VERSION = 13; // shown in Settings; keep in step with CACHE in sw.js
 const KEY = 'sento:v1';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -929,7 +929,7 @@ function drawMap() {
   mapDrawn = sig;
   mapLayers.clearLayers();
   const ink = getComputedStyle(document.documentElement);
-  const blue = ink.getPropertyValue('--primary').trim() || '#2C7DA0';
+  const blue = ink.getPropertyValue('--accent').trim() || '#1E78A3';
   const sun = ink.getPropertyValue('--sun').trim() || '#F28C38';
   if (here) {
     L.circle([here.lat, here.lon], { radius: NEARBY_KM * 1000, color: blue, weight: 1, fillOpacity: 0.03, interactive: false }).addTo(mapLayers);

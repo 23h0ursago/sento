@@ -1,4 +1,4 @@
-/* Bath tile & Fuji: aqua tiles, the blue Mt Fuji mural, steam white and a sunset-orange accent */
+/* Baby blue, aqua tiles, steam white and a sunset-orange accent */
 :root {
   --bg: #EEF6F7;          /* steam white */
   --surface: #FFFFFF;
@@ -6,11 +6,11 @@
   --ink: #1D3440;         /* deep teal */
   --muted: #5D7883;
   --line: #CDE2E5;
-  --noren: #2C7DA0;       /* header: Fuji mural blue */
-  --noren-ink: #FFFFFF;
-  --primary: #2C7DA0;
-  --primary-ink: #FFFFFF;
-  --accent: #2C7DA0;
+  --noren: #89CFF0;       /* header: baby blue */
+  --noren-ink: #14323F;   /* dark text on the light blue */
+  --primary: #89CFF0;     /* buttons */
+  --primary-ink: #12303D;
+  --accent: #1E78A3;      /* blue text and links: deeper, so it's readable on white */
   --sun: #F28C38;         /* sunset orange */
   --sun-ink: #FFFFFF;
   --tile: #9ED8DB;        /* aqua bath tile */
@@ -31,9 +31,9 @@
     --ink: #E2F0F2;
     --muted: #8DA9B3;
     --line: #25404C;
-    --noren: #1D5E7C;
-    --primary: #3592BA;
-    --accent: #8CCFE6;
+    --noren: #89CFF0;
+    --primary: #89CFF0;
+    --accent: #89CFF0;
     --sun: #F59A4D;
     --sun-ink: #1D1206;
     --tile: #2D6A70;
@@ -72,9 +72,8 @@ h1, h2, h3, p { margin: 0; }
   gap: 12px;
   padding: calc(env(safe-area-inset-top) + 12px) max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left));
   background:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 60'%3E%3Cpath d='M28 60 62 22q6-5 12-2l6 4 6-4q6-3 12 2l34 38Z' fill='%23fff' opacity='.16'/%3E%3Cpath d='M62 22q6-5 12-2l6 4 6-4q6-3 12 2l-6 6-6-3-6 4-6-4-6 3Z' fill='%23fff' opacity='.5'/%3E%3Cpath d='M0 54q10-5 20 0t20 0 20 0 20 0 20 0 20 0 20 0 20 0V60H0Z' fill='%23fff' opacity='.14'/%3E%3C/svg%3E") right 8px bottom / 150px auto no-repeat,
-    linear-gradient(rgba(255, 255, 255, .07) 1px, transparent 1px) 0 0 / 16px 16px,
-    linear-gradient(90deg, rgba(255, 255, 255, .07) 1px, transparent 1px) 0 0 / 16px 16px,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 150 64'%3E %3Cg stroke-linejoin='round'%3E %3Cpath d='M14 41H66L70 63H10ZM23 63Q40 47 57 63Z' fill='%23FFC4D2' fill-rule='evenodd' stroke='%23F08FA8' stroke-width='1.2'/%3E %3Crect x='7' y='35' width='66' height='8' rx='4' fill='%23FF9DB5' stroke='%23F07C9B' stroke-width='1.2'/%3E %3Cpath d='M17 13H63L58 35H22Z' fill='%23FFD84D' stroke='%23E9B21C' stroke-width='1.2'/%3E %3Cellipse cx='40' cy='13' rx='23' ry='4.6' fill='%23FFE993' stroke='%23E9B21C' stroke-width='1.2'/%3E %3Cellipse cx='40' cy='13.6' rx='18.5' ry='3' fill='%23F0BE2C'/%3E %3Cpath d='M21 18.5H59' stroke='%23FFF3BF' stroke-width='1.6' stroke-linecap='round'/%3E %3C/g%3E %3Ctext x='40' y='28.5' text-anchor='middle' font-family='Hiragino Sans,sans-serif' font-size='7.5' font-weight='800' fill='%23D9483B'%3E%E3%82%B1%E3%83%AD%E3%83%AA%E3%83%B3%3C/text%3E %3Cg stroke-linejoin='round'%3E %3Crect x='90' y='51' width='54' height='12' rx='5' fill='%23FFFFFF' stroke='%23B9DDF0' stroke-width='1.2'/%3E %3Crect x='95' y='40' width='45' height='12' rx='5' fill='%23F6FBFF' stroke='%23B9DDF0' stroke-width='1.2'/%3E %3C/g%3E %3Cpath d='M95 46.5H140M90 57.5H144' stroke='%235DB6E0' stroke-width='2'/%3E %3Cg fill='%23FFFFFF' fill-opacity='.85' stroke='%23FFFFFF' stroke-width='.8'%3E %3Ccircle cx='79' cy='20' r='3.2' fill-opacity='.35'/%3E%3Ccircle cx='85' cy='12' r='2' fill-opacity='.35'/%3E%3Ccircle cx='118' cy='31' r='2.6' fill-opacity='.35'/%3E %3C/g%3E %3C/svg%3E") right 60px bottom 0 / 150px auto no-repeat,
+    radial-gradient(rgba(255, 255, 255, .55) 1.6px, transparent 1.9px) 0 0 / 14px 14px,
     var(--noren);
   color: var(--noren-ink);
 }
@@ -91,8 +90,8 @@ h1, h2, h3, p { margin: 0; }
   place-items: center;
   width: 40px; height: 40px;
   border-radius: 50%;
-  background: var(--noren-ink);
-  color: var(--noren);
+  background: #fff;
+  color: var(--noren-ink);
   font-weight: 900;
   font-size: 22px;
 }
@@ -107,7 +106,7 @@ h1, h2, h3, p { margin: 0; }
   background: transparent;
   cursor: pointer;
 }
-.top .icon-btn:active { background: rgba(255, 255, 255, .12); }
+.top .icon-btn:active { background: rgba(255, 255, 255, .35); }
 
 main {
   max-width: 560px;
@@ -689,5 +688,10 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .tattoo.no { color: var(--red) !important; }
 .popup .popular { color: #B7791F; font-weight: 900; }
 .popup .been { color: #2E8A68; font-weight: 900; }
-.popup .want { color: #2C7DA0; font-weight: 900; }
+.popup .want { color: #1E78A3; font-weight: 900; }
 .pick { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 99px; background: var(--sun); color: var(--sun-ink); font-size: 11px; font-weight: 900; vertical-align: 2px; }
+
+/* Narrow phones: smaller bath set so it doesn't run into the title */
+@media (max-width: 359px) {
+  .top { background-size: 110px auto, 14px 14px, auto; background-position: right 56px bottom 0, 0 0, 0 0; }
+}
