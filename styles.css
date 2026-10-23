@@ -72,7 +72,7 @@ h1, h2, h3, p { margin: 0; }
   gap: 12px;
   padding: calc(env(safe-area-inset-top) + 12px) max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left));
   background:
-    url("icons/bathset.svg") right 62px bottom 3px / auto 58px no-repeat,
+    url("icons/bathset.svg") right 62px bottom 10px / auto 40px no-repeat,
     radial-gradient(rgba(255, 255, 255, .55) 1.6px, transparent 1.9px) 0 0 / 14px 14px,
     var(--noren);
   color: var(--noren-ink);
@@ -686,5 +686,5 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 
 /* Narrow phones: smaller bath set so it doesn't run into the title */
 @media (max-width: 359px) {
-  .top { background-size: auto 48px, 14px 14px, auto; background-position: right 58px bottom 4px, 0 0, 0 0; }
+  .top { background-size: auto 32px, 14px 14px, auto; background-position: right 58px bottom 12px, 0 0, 0 0; }
 }
