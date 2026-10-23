@@ -61,7 +61,7 @@ h1, h2, h3, p { margin: 0; }
 /* Line icons (header, tabs, buttons). Scoped so it doesn't touch the bottles or the map's own SVG. */
 .top svg, .tabs svg, .icon-btn svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
-/* Header: a noren curtain, split into panels at the bottom edge */
+/* Header */
 .top {
   position: sticky;
   top: 0;
@@ -76,13 +76,6 @@ h1, h2, h3, p { margin: 0; }
     radial-gradient(rgba(255, 255, 255, .55) 1.6px, transparent 1.9px) 0 0 / 14px 14px,
     var(--noren);
   color: var(--noren-ink);
-}
-.top::after {
-  content: "";
-  position: absolute;
-  left: 0; right: 0; bottom: -10px;
-  height: 10px;
-  background: repeating-linear-gradient(90deg, var(--noren) 0 calc(25% - 3px), transparent calc(25% - 3px) 25%);
 }
 .brand { display: flex; align-items: center; gap: 12px; }
 .yu {
@@ -111,7 +104,7 @@ h1, h2, h3, p { margin: 0; }
 main {
   max-width: 560px;
   margin: 0 auto;
-  padding: 26px max(16px, env(safe-area-inset-right)) 24px max(16px, env(safe-area-inset-left));
+  padding: 18px max(16px, env(safe-area-inset-right)) 24px max(16px, env(safe-area-inset-left));
   display: flex;
   flex-direction: column;
   gap: 14px;
