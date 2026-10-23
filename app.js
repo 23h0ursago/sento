@@ -6,7 +6,7 @@
 // phones later, swap store.load/save for a backend (see README).
 // ---------------------------------------------------------------------------
 
-const VERSION = 24; // shown in Settings; keep in step with CACHE in sw.js
+const VERSION = 25; // shown in Settings; keep in step with CACHE in sw.js
 const KEY = 'sento:v1';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -308,6 +308,124 @@ function milkShelf(since) {
 }
 
 // ---------------------------------------------------------------------------
+// Weather (top bar + "Should we go?") from Open-Meteo, a free forecast service.
+// Location: where the map last found you, else your pinned sento, else Tokyo.
+// Cold or rainy weather counts as great sento weather.
+// ---------------------------------------------------------------------------
+
+const WX_KEY = 'sento:weather', SPOT_KEY = 'sento:spot';
+const WX_FRESH = 30 * 60000;
+let wx = (() => { try { return JSON.parse(localStorage.getItem(WX_KEY)); } catch { return null; } })();
+let wxBusy = false;
+
+function weatherSpot() {
+  try { const p = JSON.parse(localStorage.getItem(SPOT_KEY)); if (p?.lat) return p; } catch {}
+  const pinned = S.sentos.filter(s => s.lat != null);
+  if (pinned.length) return { lat: pinned.reduce((a, s) => a + s.lat, 0) / pinned.length, lon: pinned.reduce((a, s) => a + s.lon, 0) / pinned.length };
+  return TOKYO;
+}
+
+// WMO weather codes → icon and words
+function wxKind(code, isDay = 1) {
+  if (code === 0) return { icon: isDay ? '☀️' : '🌙', word: 'clear' };
+  if (code <= 2) return { icon: isDay ? '🌤️' : '🌙', word: 'partly cloudy' };
+  if (code === 3) return { icon: '☁️', word: 'cloudy' };
+  if (code <= 48) return { icon: '🌫️', word: 'foggy' };
+  if (code <= 57) return { icon: '🌦️', word: 'drizzly', wet: true };
+  if (code <= 67 || (code >= 80 && code <= 82)) return { icon: '🌧️', word: 'rainy', wet: true };
+  if (code <= 77 || code === 85 || code === 86) return { icon: '❄️', word: 'snowy', wet: true, snow: true };
+  return { icon: '⛈️', word: 'stormy', wet: true };
+}
+
+// How good the weather is for a soak: 2 = perfect, 1 = nice, 0 = warm
+function sentoWeather(temp, kind) {
+  if (kind.snow || temp <= 5) return { level: 2, text: 'Freezing out, the best sento weather there is' };
+  if (temp <= 12) return { level: 2, text: kind.wet ? 'Cold and wet, perfect for a hot bath' : 'Chilly, perfect for a hot bath' };
+  if (kind.wet) return { level: 2, text: 'Rainy, a good excuse for a long soak' };
+  if (temp <= 20) return { level: 1, text: 'Nice weather for a soak' };
+  if (temp <= 27) return { level: 0, text: 'Warm out, try the cold bath too' };
+  return { level: 0, text: 'Hot out, cool off in the cold bath' };
+}
+
+// Forecast for a date: score bonus and a label for suggestions
+function dayWeather(date) {
+  const d = wx?.daily;
+  const i = d?.time?.indexOf(date) ?? -1;
+  if (i < 0) return null;
+  const tmin = d.temperature_2m_min[i], rain = (d.precipitation_probability_max?.[i] || 0) >= 60;
+  const kind = wxKind(d.weather_code[i]);
+  if (kind.snow || tmin <= 6) return { bonus: 0.9, tag: `🥶 cold day, ${Math.round(tmin)}°` };
+  if (tmin <= 11) return { bonus: 0.6, tag: `🧣 chilly, ${Math.round(tmin)}°` };
+  if (rain || kind.wet) return { bonus: 0.4, tag: `${kind.icon} rainy` };
+  return { bonus: 0, tag: '' };
+}
+
+async function fetchWeather(force = false) {
+  if (wxBusy || (!force && wx && Date.now() - wx.at < WX_FRESH)) return;
+  wxBusy = true;
+  try {
+    const { lat, lon } = weatherSpot();
+    const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(3)}&longitude=${lon.toFixed(3)}`
+      + '&current=temperature_2m,apparent_temperature,weather_code,is_day'
+      + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=7');
+    if (!res.ok) throw new Error(res.status);
+    const data = await res.json();
+    wx = { at: Date.now(), current: data.current, daily: data.daily };
+    try { localStorage.setItem(WX_KEY, JSON.stringify(wx)); } catch {}
+    renderWeather();
+    if (tab === 'go' && !sheet.open) render();
+  } catch (err) {
+    console.warn('weather', err); // keep showing the last forecast, if any
+  } finally {
+    wxBusy = false;
+  }
+}
+
+function currentWeather() {
+  const c = wx?.current;
+  if (!c || Date.now() - wx.at > 6 * 3600000) return null; // too old to show
+  const kind = wxKind(c.weather_code, c.is_day);
+  const temp = Math.round(c.apparent_temperature ?? c.temperature_2m);
+  return { kind, temp, real: Math.round(c.temperature_2m), ...sentoWeather(temp, kind) };
+}
+
+function renderWeather() {
+  const el = $('#weather');
+  const w = currentWeather();
+  if (!w) { el.hidden = true; return; }
+  el.hidden = false;
+  el.dataset.level = w.level;
+  el.setAttribute('aria-label', `Weather: ${w.real}°, ${w.kind.word}. ${w.text}`);
+  el.innerHTML = `<span class="wx-icon">${w.kind.icon}</span><b>${w.real}°</b>${w.level === 2 ? '<span class="wx-badge" aria-hidden="true">♨</span>' : ''}`;
+}
+
+function weatherTip() {
+  const w = currentWeather();
+  if (!w) return '';
+  return `<p class="wx-tip" data-level="${w.level}">${w.kind.icon} ${w.real}° and ${esc(w.kind.word)}. ${esc(w.text)}${w.level === 2 ? ' ♨' : '.'}</p>`;
+}
+
+// A Google Calendar "new event" link, filled in for a suggested slot
+function calendarLink(sl) {
+  const [y, m, d] = sl.date.split('-').map(Number);
+  const stamp = mins => {
+    const t = new Date(y, m - 1, d, 0, mins);
+    const p = n => String(n).padStart(2, '0');
+    return `${t.getFullYear()}${p(t.getMonth() + 1)}${p(t.getDate())}T${p(t.getHours())}${p(t.getMinutes())}00`;
+  };
+  const q = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: `♨ ${sl.s.name}`,
+    dates: `${stamp(sl.start)}/${stamp(sl.end)}`,
+    ctz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Tokyo',
+    details: [`Sento time${S.names.b ? ` with ${S.names.b}` : ''} 🥛`, sl.label, sl.special ? `${sl.special.emoji} ${sl.special.name}` : ''].filter(Boolean).join('\n'),
+  });
+  if (sl.s.lat != null) q.set('location', `${sl.s.name} (${sl.s.lat.toFixed(5)}, ${sl.s.lon.toFixed(5)})`);
+  else q.set('location', sl.s.name);
+  return `https://calendar.google.com/calendar/render?${q}`;
+}
+
+// ---------------------------------------------------------------------------
 // Milk crate (History): every bottle of milk you log after a bath fills a slot.
 // A visit stores milk as { regular, strawberry, coffee } bottle counts.
 // ---------------------------------------------------------------------------
@@ -456,8 +574,10 @@ function suggestions() {
           o.quiet * 1.5 +
           (weekend ? -0.6 : 0) +                    // weekends are busier
           (1 - d / 6) * urgency * 3 +               // nudge: longer gap → sooner slots
-          Math.min(sinceSento, 30) / 30 * 0.6;      // rotate between favourites
-        slots.push({ s, date, d, start: o.start, end: o.end, label: o.label, weekend, score, special: specialsOn(s, date)[0] });
+          Math.min(sinceSento, 30) / 30 * 0.6 +     // rotate between favourites
+          (dayWeather(date)?.bonus || 0);           // cold or rainy: perfect sento weather
+        const wx = dayWeather(date);
+        slots.push({ s, date, d, start: o.start, end: o.end, label: o.label + (wx?.tag ? ` · ${wx.tag}` : ''), weekend, score, special: specialsOn(s, date)[0] });
       }
     }
   }
@@ -587,7 +707,7 @@ function viewGo() {
       <h2 class="cute">${esc(n.head)}</h2>
       <p>${esc(n.text)}</p>
       ${milkShelf(since)}
-      <button class="btn primary wide" data-action="log">+ Log a visit</button>
+      ${weatherTip()}
     </section>`;
 
   if (!S.sentos.length) {
@@ -614,7 +734,10 @@ function viewGo() {
       <div class="row slot${i === 0 ? ' best' : ''}">
         <span class="when"><b>${esc(dayWord(sl.date))}</b><small>${hhmm(sl.start)}–${hhmm(sl.end)}</small></span>
         <span class="grow"><b>${esc(sl.s.name)}</b><small>${esc(sl.label)}${sl.weekend ? ' · weekend, may be busier' : ''}</small>${sl.special ? `<small class="special-line">${sl.special.emoji} ${esc(sl.special.name)}</small>` : ''}</span>
-        ${i === 0 ? '<span class="pill">Best bet</span>' : ''}
+        <span class="slot-side">
+          ${i === 0 ? '<span class="pill">Best bet</span>' : ''}
+          <a class="cal-add" href="${esc(calendarLink(sl))}" target="_blank" rel="noopener" aria-label="Add to Google Calendar">📅</a>
+        </span>
       </div>`).join('')}</div>
       <p class="hint">${withCal
         ? `Times you’re both free for 2 hours, from your Google Calendars (checked ${esc(lastSynced(cal.fetchedAt))}). `
@@ -899,6 +1022,7 @@ async function findNearbyNow(force, centre) {
       : { ...TOKYO, guessed: true };
   }
   here = pos;
+  if (!pos.guessed && !pos.area) { try { localStorage.setItem(SPOT_KEY, JSON.stringify({ lat: pos.lat, lon: pos.lon })); } catch {} }
   mapCentered = false;
   try {
     await localNearby(pos); // instant, from the bundled data
@@ -2262,6 +2386,10 @@ const actions = {
   log: (_, el) => openVisit({ id: uid(), date: el?.dataset.date || today(), sentoId: el?.dataset.sento || pastVisits()[0]?.sentoId, rating: 0, note: '' }),
   'sento-view': (_, el) => { sentoView = el.dataset.v; render(); },
   'milk-info': (_, el) => milkInfo(el.dataset.kind),
+  weather: () => {
+    const w = currentWeather();
+    if (w) toast(`${w.kind.icon} ${w.real}° (feels like ${w.temp}°), ${w.kind.word}. ${w.text}.`, 4500);
+  },
   profiles: openProfiles,
   'find-nearby': () => findNearby(true),
   'map-filter': id => { mapFilter[id] = !mapFilter[id]; render(); },
@@ -2402,6 +2530,7 @@ document.addEventListener('visibilitychange', () => {
   if (!sheet.open) render();
   runSync();
   fetchCalendar();
+  fetchWeather();
 });
 setInterval(() => { if (!document.hidden && !sheet.open) render(); }, 60000);
 setInterval(() => { if (!document.hidden) { runSync(); fetchCalendar(); } }, 20000);
@@ -2427,3 +2556,5 @@ if (joinHash) {
 }
 runSync();
 fetchCalendar();
+renderWeather();
+fetchWeather();

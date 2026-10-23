@@ -28,6 +28,10 @@ Then on each iPhone, open the URL in Safari → Share → **Add to Home Screen**
 
 When you deploy changes, bump `CACHE` in `sw.js` so phones pick up the new files.
 
+## Weather
+
+The top bar shows the current weather from [Open-Meteo](https://open-meteo.com) (free, no account), for where the map last found you, your pinned sento, or Tokyo. Cold or rainy weather gets a ♨ badge, and cold or rainy days in the 7-day forecast rank higher in "Should we go?". Each suggestion has a 📅 button that opens a filled-in Google Calendar event.
+
 ## Live sync between two phones
 
 Sync uses a free Supabase project:

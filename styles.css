@@ -72,7 +72,6 @@ h1, h2, h3, p { margin: 0; }
   gap: 12px;
   padding: calc(env(safe-area-inset-top) + 12px) max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left));
   background:
-    url("icons/bathset.svg") right 58px bottom 12px / auto 34px no-repeat,
     radial-gradient(rgba(255, 255, 255, .55) 1.6px, transparent 1.9px) 0 0 / 14px 14px,
     var(--noren);
   color: var(--noren-ink);
@@ -673,13 +672,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .pick { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 99px; background: var(--sun); color: var(--sun-ink); font-size: 11px; font-weight: 900; vertical-align: 2px; }
 
 /* Narrow phones: smaller bath set so it doesn't run into the title */
-/* Phones: a smaller bath set, so the profile photos and names have room */
-@media (max-width: 420px) {
-  .top { background-size: auto 26px, 14px 14px, auto; background-position: right 56px bottom 14px, 0 0, 0 0; }
-}
-@media (max-width: 340px) {
-  .top { background-size: 0 0, 14px 14px, auto; }
-}
+
 
 /* Profile photos in the top bar: two overlapping circles */
 .avatars { display: flex; padding: 0; border: 0; background: none; cursor: pointer; }
@@ -732,3 +725,47 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .milk-step input { -moz-appearance: textfield; appearance: textfield; }
 .bottle .rim { fill: #fff; fill-opacity: .35; stroke: color-mix(in srgb, var(--ink) 28%, transparent); stroke-width: 1.4; }
 @media (prefers-color-scheme: dark) { .bottle .rim { fill-opacity: .12; stroke: color-mix(in srgb, #fff 40%, transparent); } }
+
+/* Weather badge in the top bar */
+.weather {
+  margin-left: auto;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, .55);
+  color: var(--noren-ink);
+  font: 900 16px/1 var(--font);
+  cursor: pointer;
+}
+.weather .wx-icon { font-size: 18px; }
+.weather[data-level="2"] { background: #fff; box-shadow: 0 0 0 2px var(--sun); }
+.wx-badge {
+  position: absolute;
+  top: -7px; right: -6px;
+  display: grid; place-items: center;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--sun);
+  color: #fff;
+  font-size: 11px;
+}
+.top { gap: 10px; }
+.wx-tip { font-size: 14px; color: var(--muted) !important; }
+.wx-tip[data-level="2"] { color: var(--ink) !important; font-weight: 700; }
+
+/* Add-to-calendar on suggestions */
+.slot-side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.cal-add {
+  display: grid; place-items: center;
+  width: 36px; height: 36px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  text-decoration: none;
+  font-size: 18px;
+}
+.cal-add:active { transform: scale(.94); }
