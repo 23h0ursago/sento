@@ -678,3 +678,16 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   pointer-events: none;
 }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* Map legend, star pins, tattoo lines */
+.map-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.map-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.pin-dot { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--dot); color: #fff; font-size: 10px; font-style: normal; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .25); }
+.star-pin { font-size: 22px; line-height: 26px; text-align: center; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .35)); }
+.tattoo { font-weight: 700; }
+.tattoo.ok { color: var(--ok) !important; }
+.tattoo.no { color: var(--red) !important; }
+.popup .popular { color: #B7791F; font-weight: 900; }
+.popup .been { color: #2E8A68; font-weight: 900; }
+.popup .want { color: #2C7DA0; font-weight: 900; }
+.pick { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 99px; background: var(--sun); color: var(--sun-ink); font-size: 11px; font-weight: 900; vertical-align: 2px; }

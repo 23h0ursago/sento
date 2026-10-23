@@ -55,9 +55,16 @@ Emoji and colours are picked from the bath's name. Tap any special to edit or de
 
 ## Map & nearby sento
 
-The Sento tab's **🗺 Map** view shows your sento as ♨ pins and every public bath OpenStreetMap knows within 15 km as orange dots. The list below the map starts with three ⭐ picks (close by, real sento, known hours), then everything else by distance. **+ Add** puts a place in your list, with hours from OpenStreetMap when they're readable. If it's a sento you already have (e.g. "Kosugiyu" vs 小杉湯), choose it to pin it on the map instead.
+The Sento tab's **🗺 Map** view shows sento within 15 km:
 
-Map tiles and data © OpenStreetMap contributors. The search uses the public Overpass servers (overpass-api.de, kumi.systems, private.coffee). Results are kept on the phone for a week, and your location is only sent as part of the search.
+- **✓ green pins**: your sento you've been to · **♨ blue pins**: your sento you haven't been to yet
+- **🌟**: popular Tokyo sento (`tools/popular-tokyo.json`) · **orange dots**: every other sento
+- Filters: **🐉 Tattoo-friendly** and **🌟 Popular only**
+- **+ Add** puts a place in your list (with hours when OpenStreetMap has them). If it's a sento you already have (e.g. "Kosugiyu" vs 小杉湯), choose it to pin it instead.
+
+**Tattoos:** set what you know on each sento (OK / OK if covered / not allowed). Otherwise the app guesses: neighbourhood sento usually allow tattoos, super sento and spas often don't. Guesses are marked "not confirmed".
+
+**Data:** `data/sento/` holds every sento in Japan from OpenStreetMap (~6,000), split into 0.5° tiles so the app only loads the area you're in: instant, and it works offline. The **Update sento data** GitHub Action (`.github/workflows/sento-data.yml`) rebuilds it every Monday with `tools/build_sento_data.py`, and you can run it by hand from the Actions tab. Outside Japan the app falls back to a live OpenStreetMap search. Map and sento data © OpenStreetMap contributors.
 
 ## さっぱり photo diary
 

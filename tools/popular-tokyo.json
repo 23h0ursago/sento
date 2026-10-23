@@ -1,0 +1,25 @@
+{
+  "_about": "Well-known Tokyo sento, pinned with a 🌟 on the map. Each is matched to OpenStreetMap by name within 2.5 km of the given spot, so places that have closed (and been removed from the map) drop out. Sources: Japan Experience 'Top 5 sento in Tokyo' (Sep 2025), e-housing 'Public baths in Tokyo 2026 guide', plus long-time favourites. Edit freely.",
+  "places": [
+    { "name": "小杉湯", "area": "Kōenji", "lat": 35.7081, "lon": 139.6488 },
+    { "name": "黄金湯", "area": "Kinshichō", "lat": 35.6990, "lon": 139.8150 },
+    { "name": "タカラ湯", "area": "Kita-Senju", "lat": 35.7560, "lon": 139.8000 },
+    { "name": "曙湯", "area": "Asakusa", "lat": 35.7150, "lon": 139.7920 },
+    { "name": "栄湯", "area": "Nishi-Ochiai", "lat": 35.7250, "lon": 139.6750 },
+    { "name": "竹の湯", "area": "Minami-Azabu", "lat": 35.6510, "lon": 139.7310 },
+    { "name": "蓮沼温泉", "area": "Nishi-Kamata", "lat": 35.5650, "lon": 139.7080 },
+    { "name": "改良湯", "area": "Shibuya", "lat": 35.6545, "lon": 139.7065 },
+    { "name": "金春湯", "area": "Ginza", "lat": 35.6690, "lon": 139.7610 },
+    { "name": "稲荷湯", "area": "Takinogawa", "lat": 35.7510, "lon": 139.7250 },
+    { "name": "大黒湯", "area": "Oshiage", "lat": 35.7100, "lon": 139.8220 },
+    { "name": "清水湯", "area": "Musashi-Koyama", "lat": 35.6230, "lon": 139.7060 },
+    { "name": "萩の湯", "area": "Uguisudani", "lat": 35.7220, "lon": 139.7780 },
+    { "name": "燕湯", "area": "Ueno", "lat": 35.7100, "lon": 139.7740 },
+    { "name": "寿湯", "area": "Higashi-Ueno", "lat": 35.7120, "lon": 139.7830 },
+    { "name": "久松湯", "area": "Sakuradai", "lat": 35.7410, "lon": 139.6630 },
+    { "name": "文化浴泉", "area": "Meguro", "lat": 35.6290, "lon": 139.6930 },
+    { "name": "戸越銀座温泉", "area": "Togoshi-Ginza", "lat": 35.6160, "lon": 139.7150 },
+    { "name": "湯どんぶり栄湯", "area": "Nihonzutsumi", "lat": 35.7270, "lon": 139.7920 },
+    { "name": "梅の湯", "area": "Arakawa", "lat": 35.7380, "lon": 139.7820 }
+  ]
+}

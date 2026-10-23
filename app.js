@@ -6,7 +6,7 @@
 // phones later, swap store.load/save for a backend (see README).
 // ---------------------------------------------------------------------------
 
-const VERSION = 11; // shown in Settings; keep in step with CACHE in sw.js
+const VERSION = 12; // shown in Settings; keep in step with CACHE in sw.js
 const KEY = 'sento:v1';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -556,6 +556,7 @@ function viewSentos() {
           <b>${esc(s.name)}</b>
           <small>${esc(weekSummary(s))}</small>
           <small>${st.count ? `${st.count} visit${st.count > 1 ? 's' : ''} · last ${esc(lastWord(st.last))}` : 'Not visited yet'}${st.avg ? ` · ★ ${st.avg.toFixed(1)}` : ''}</small>
+          ${s.tattoo ? tattooLine(sentoTattoo(s)) : ''}
         </span>
         ${os ? `<span class="status ${os.cls}">${esc(os.text)}</span>` : ''}
       </button>`;
@@ -616,7 +617,11 @@ function parseOsmHours(str) {
     if (!times) return null;
     const open = hm(times[0]);
     const close = times.length > 1 ? hm(times[times.length - 1]) : '00:00'; // "15:00+" = open-ended
-    days.forEach(d => (week[d] = { open, close }));
+    days.forEach(d => {
+      // "11:30-00:00; 00:00-01:30" is one evening that runs past midnight
+      if (week[d] && week[d].close === '00:00' && open === '00:00') week[d] = { open: week[d].open, close };
+      else week[d] = { open, close };
+    });
     any = true;
   }
   return any ? week : null;
@@ -628,6 +633,69 @@ const kmBetween = (a, b) => {
   return 12742 * Math.asin(Math.sqrt(x));
 };
 const normName = s => String(s || '').toLowerCase().replace(/[\s\-・]/g, '');
+
+// What kind of bath a place is: 'sento', 'super' (super sento / spa), 'onsen' (hot-spring complex) or ''.
+// Same rules as tools/build_sento_data.py, for places found by the live search.
+const SUPER_NAME = /スパ|SPA|Spa|ランド|健康センター|ヘルスセンター|スーパー銭湯|極楽湯|おふろの王様|竜泉寺|テルマー|万葉|ラクーア|湯処|湯快爽快|天空|ゆ〜ゆ|やまとの湯|湯けむりの里/;
+function kindOf(bathType, name) {
+  if (bathType === 'super_sento' || SUPER_NAME.test(name)) return 'super';
+  if (bathType === 'sento') return 'sento';
+  // Natural-hot-spring neighbourhood sento are often tagged onsen too; a name ending in 湯 means a sento
+  if ((bathType === 'onsen' || bathType === 'hot_spring' || /温泉郷|旅館|ホテル|リゾート|共同浴場/.test(name)) && !/湯$/.test(name)) return 'onsen';
+  if (/湯$|湯温泉/.test(name)) return 'sento';
+  return '';
+}
+const KIND_LABEL = { super: 'super sento / spa', onsen: 'onsen' };
+
+// Tattoo rules: what you've confirmed for your sento, otherwise a labelled guess.
+// Neighbourhood sento generally don't turn people away (public bath law); super sento and spas often do.
+const TATTOO = {
+  ok:    { icon: '✅', text: 'Tattoos OK', good: true },
+  cover: { icon: '🩹', text: 'Tattoos OK if covered', good: true },
+  no:    { icon: '🚫', text: 'No tattoos', good: false },
+};
+function tattooInfo(kind, confirmed) {
+  if (TATTOO[confirmed]) return { ...TATTOO[confirmed], sure: true };
+  if (kind === 'super' || kind === 'onsen') return { icon: '⚠️', text: 'Tattoos often not allowed, check first', good: false, sure: false };
+  return { icon: '🐉', text: 'Tattoos usually OK (not confirmed)', good: true, sure: false };
+}
+const tattooLine = t => `<small class="tattoo ${t.good ? 'ok' : 'no'}">${t.icon} ${esc(t.text)}</small>`;
+const placeTattoo = p => { const fav = matchFavourite(p); return tattooInfo(fav?.kind || p.type, fav?.tattoo); };
+const sentoTattoo = s => tattooInfo(s.kind, s.tattoo);
+
+// ---------------------------------------------------------------------------
+// Bundled sento data (data/sento/, rebuilt weekly from OpenStreetMap by a GitHub Action):
+// load only the 0.5° tiles near you, so this is instant and works offline.
+// ---------------------------------------------------------------------------
+const DATA_DIR = 'data/sento/';
+let dataIndex = null;
+const dataTiles = new Map();
+const loadDataIndex = () => (dataIndex ||= fetch(DATA_DIR + 'index.json')
+  .then(r => (r.ok ? r.json() : Promise.reject(new Error(r.status))))
+  .catch(err => { dataIndex = null; throw err; }));
+const OSM_TYPES = { n: 'node', w: 'way', r: 'relation' };
+
+async function localNearby(at) {
+  const idx = await loadDataIndex();
+  const t = idx.tile;
+  const dLat = NEARBY_KM / 111.32, dLon = NEARBY_KM / (111.32 * Math.cos(at.lat * Math.PI / 180));
+  const keys = [];
+  for (let la = Math.floor((at.lat - dLat) / t) * t; la <= at.lat + dLat; la += t)
+    for (let lo = Math.floor((at.lon - dLon) / t) * t; lo <= at.lon + dLon; lo += t) {
+      const key = `${+la.toFixed(2)}_${+lo.toFixed(2)}`;
+      if (idx.tiles[key]) keys.push(key);
+    }
+  if (!keys.length) throw new Error('no bundled data here'); // e.g. outside Japan: use the live search
+  const lists = await Promise.all(keys.map(key => {
+    if (!dataTiles.has(key)) dataTiles.set(key, fetch(`${DATA_DIR}${key}.json`).then(r => r.json()).catch(err => { dataTiles.delete(key); throw err; }));
+    return dataTiles.get(key);
+  }));
+  const places = lists.flat()
+    .map(x => ({ id: `${OSM_TYPES[x.i[0]]}/${x.i.slice(1)}`, name: x.n, en: x.e || '', lat: x.a, lon: x.o,
+      hours: x.h || '', website: x.w || '', type: x.t || '', popular: !!x.p }))
+    .filter(p => kmBetween(at, p) <= NEARBY_KM + 0.5);
+  nearby = { at: Date.now(), lat: at.lat, lon: at.lon, places, updated: idx.updated };
+}
 const matchFavourite = p => S.sentos.find(s => s.osm === p.id || normName(s.name) === normName(p.name) || (p.en && normName(s.name) === normName(p.en)));
 
 function loadLeaflet() {
@@ -710,7 +778,7 @@ async function searchNearby(at) {
     if (seen.has(id)) return null;
     seen.add(id);
     return { id, name: t.name, en: t['name:en'] || t['name:ja-Latn'] || '', lat, lon,
-      hours: t.opening_hours || '', website: t.website || t['contact:website'] || '', type: t['bath:type'] || '' };
+      hours: t.opening_hours || '', website: t.website || t['contact:website'] || '', type: kindOf(t['bath:type'], t.name) };
   }).filter(p => p && kmBetween(at, p) <= NEARBY_KM + 0.5);
   nearby = { at: Date.now(), lat: at.lat, lon: at.lon, places };
   try { localStorage.setItem(NEARBY_KEY, JSON.stringify(nearby)); } catch {}
@@ -738,6 +806,14 @@ async function findNearbyNow(force, centre) {
   }
   here = pos;
   mapCentered = false;
+  try {
+    await localNearby(pos); // instant, from the bundled data
+    nearbyStatus = '';
+    if (tab === 'sentos' && sentoView === 'map' && !sheet.open) render();
+    return;
+  } catch {
+    // no bundled data for this area (or not downloaded yet while offline): search live
+  }
   const fresh = nearby && Date.now() - nearby.at < 7 * 864e5 && kmBetween(nearby, pos) < 2;
   if (force || !fresh) {
     nearbyStatus = 'searching';
@@ -753,14 +829,19 @@ async function findNearbyNow(force, centre) {
   if (tab === 'sentos' && sentoView === 'map' && !sheet.open) render();
 }
 
-// Nearby sento not in your list yet, best first: closest, nudged up when they're a real sento with known hours.
+// Map filters (chips under the map)
+const mapFilter = { tattoo: false, popular: false };
+const mapFilterOk = p => (!mapFilter.tattoo || placeTattoo(p).good) && (!mapFilter.popular || p.popular);
+
+// Nearby sento not in your list yet, best first: closest, nudged up when they're popular, a real sento, with known hours.
 function recommendations() {
   if (!nearby || !here) return [];
   return nearby.places
     .filter(p => !matchFavourite(p))
     .map(p => ({ ...p, km: kmBetween(here, p) }))
     .filter(p => p.km <= NEARBY_KM)
-    .map(p => ({ ...p, score: p.km - (parseOsmHours(p.hours) ? 0.6 : 0) - (/sento/.test(p.type) ? 0.4 : 0) - (/onsen|hot_spring|super/.test(p.type) ? -0.3 : 0) }))
+    .filter(mapFilterOk)
+    .map(p => ({ ...p, score: p.km - (p.popular ? 2 : 0) - (parseOsmHours(p.hours) ? 0.6 : 0) - (p.type === 'sento' ? 0.4 : 0) + (p.type === 'super' || p.type === 'onsen' ? 0.3 : 0) }))
     .sort((a, b) => a.score - b.score);
 }
 
@@ -776,6 +857,16 @@ function viewMap() {
   const unpinned = S.sentos.filter(s => s.lat == null);
   return `
     <div id="map-slot" class="map map-loading"><span>Loading map…</span></div>
+    <div class="map-legend">
+      <span><i class="pin-dot" style="--dot:var(--ok)">✓</i>Been</span>
+      <span><i class="pin-dot" style="--dot:var(--primary)">♨</i>Want to go</span>
+      <span>🌟 Popular</span>
+      <span><i class="dot" style="--dot:var(--sun)"></i>Other sento</span>
+    </div>
+    <div class="chips">
+      <button class="chip" aria-pressed="${mapFilter.tattoo}" data-action="map-filter" data-id="tattoo">🐉 Tattoo-friendly</button>
+      <button class="chip" aria-pressed="${mapFilter.popular}" data-action="map-filter" data-id="popular">🌟 Popular only</button>
+    </div>
     ${here?.guessed ? `<p class="hint">Couldn’t get your location, so this is around ${S.sentos.some(s => s.lat != null) ? 'your sento' : 'Tokyo Station'}. Allow location for Safari in iPhone Settings to search near you.</p>` : ''}
     ${unpinned.length ? `<p class="hint">Not on the map yet: ${unpinned.map(s => esc(s.name)).join(', ')}. Find it below or on the map, tap + Add and choose it to pin it.</p>` : ''}
     <h3 class="section">Sento near you ${recs.length ? `<span class="count">${recs.length}</span>` : ''}</h3>
@@ -790,16 +881,17 @@ function viewMap() {
       const week = parseOsmHours(p.hours);
       return `<div class="row nearby">
         <button class="grow plain" data-action="focus-place" data-id="${esc(p.id)}">
-          <b>${i < 3 ? '⭐ ' : ''}${esc(p.name)}</b>
-          <small>${p.km.toFixed(1)} km${p.en ? ` · ${esc(p.en)}` : ''}${/onsen|hot_spring|super/.test(p.type) ? ' · onsen / super sento' : ''}</small>
+          <b>${p.popular ? '🌟 ' : ''}${esc(p.name)}${i < 3 ? ' <span class="pick">Top pick</span>' : ''}</b>
+          <small>${p.km.toFixed(1)} km${p.en ? ` · ${esc(p.en)}` : ''}${KIND_LABEL[p.type] ? ` · ${KIND_LABEL[p.type]}` : ''}</small>
           <small>${week ? `🕒 ${esc(weekSummary({ week }))}` : 'Hours unknown'}</small>
+          ${tattooLine(placeTattoo(p))}
         </button>
         <button class="btn small" data-action="add-nearby" data-id="${esc(p.id)}">+ Add</button>
       </div>`;
     }).join('')}</div>
     ${recs.length > 25 ? `<p class="hint">Showing the 25 closest of ${recs.length}. Move around the map to see the rest.</p>` : ''}`
     : !status ? `<p class="empty-note">No new sento found within ${NEARBY_KM} km.</p>` : ''}
-    <p class="hint">Map and sento data © OpenStreetMap contributors. Your location is only used to search and isn’t saved online. Hours come from OpenStreetMap and can be out of date. Double-check them on the sento’s website.</p>`;
+    <p class="hint">Map and sento data © OpenStreetMap contributors${nearby?.updated ? `, sento list updated ${esc(nearby.updated)}` : ''}. Your location stays on your phone. Hours come from OpenStreetMap and can be out of date. Double-check them on the sento’s website.</p>`;
 }
 
 async function mountMap() {
@@ -832,7 +924,7 @@ function drawMap() {
   if (!map) return;
   const L = window.L;
   const pins = S.sentos.filter(s => s.lat != null);
-  const sig = JSON.stringify([here, nearby?.at, pins.map(s => [s.id, s.lat, s.lon, s.u])]);
+  const sig = JSON.stringify([here, nearby?.at, mapFilter, pins.map(s => [s.id, s.lat, s.lon, s.u, sentoStats(s.id).count])]);
   if (sig === mapDrawn) return; // nothing changed: keep any open popup
   mapDrawn = sig;
   mapLayers.clearLayers();
@@ -844,16 +936,21 @@ function drawMap() {
     L.circleMarker([here.lat, here.lon], { radius: 7, color: '#fff', weight: 3, fillColor: blue, fillOpacity: 1 })
       .bindTooltip(here.guessed || here.area ? 'Search centre' : 'You are here').addTo(mapLayers);
   }
+  const ok = ink.getPropertyValue('--ok').trim() || '#2E8A68';
   for (const p of nearby?.places || []) {
-    if (matchFavourite(p)?.lat != null) continue; // shown as a ♨ pin instead
-    L.circleMarker([p.lat, p.lon], { radius: 7, color: '#fff', weight: 2, fillColor: sun, fillOpacity: 0.95 })
-      .bindPopup(() => placePopup(p), { maxWidth: 240 }).addTo(mapLayers)._sentoId = p.id;
+    if (matchFavourite(p)?.lat != null || !mapFilterOk(p)) continue; // yours are ♨ pins instead
+    const marker = p.popular
+      ? L.marker([p.lat, p.lon], { icon: L.divIcon({ className: 'star-pin', html: '🌟', iconSize: [26, 26], iconAnchor: [13, 13], popupAnchor: [0, -10] }), zIndexOffset: 500 })
+      : L.circleMarker([p.lat, p.lon], { radius: 6, color: '#fff', weight: 2, fillColor: sun, fillOpacity: 0.9 });
+    marker.bindPopup(() => placePopup(p), { maxWidth: 250 }).addTo(mapLayers)._sentoId = p.id;
   }
+  // Yours: green ♨ once you've been, blue ♨ if you haven't yet
   for (const s of pins) {
+    const been = sentoStats(s.id).count > 0;
     L.marker([s.lat, s.lon], {
-      icon: L.divIcon({ className: 'fav-pin', html: `<span style="--dot:${sentoColor(s)}"><i>♨</i></span>`, iconSize: [34, 34], iconAnchor: [17, 30], popupAnchor: [0, -26] }),
+      icon: L.divIcon({ className: 'fav-pin', html: `<span style="--dot:${been ? ok : blue}"><i>${been ? '✓' : '♨'}</i></span>`, iconSize: [34, 34], iconAnchor: [17, 30], popupAnchor: [0, -26] }),
       zIndexOffset: 1000,
-    }).bindPopup(() => favPopup(s), { maxWidth: 240 }).addTo(mapLayers);
+    }).bindPopup(() => favPopup(s), { maxWidth: 250 }).addTo(mapLayers);
   }
   if (here && !mapCentered) { map.setView([here.lat, here.lon], 13); mapCentered = true; }
 }
@@ -863,9 +960,11 @@ function placePopup(p) {
   const fav = matchFavourite(p);
   const km = here ? `${kmBetween(here, p).toFixed(1)} km away` : '';
   return `<div class="popup">
+    ${p.popular ? '<small class="popular">🌟 Popular in Tokyo</small>' : ''}
     <b>${esc(p.name)}</b>${p.en ? `<small>${esc(p.en)}</small>` : ''}
-    <small>${km}</small>
+    <small>${km}${KIND_LABEL[p.type] ? ` · ${KIND_LABEL[p.type]}` : ''}</small>
     <small>${week ? `🕒 ${esc(weekSummary({ week }))}` : 'Hours unknown'}</small>
+    ${tattooLine(placeTattoo(p))}
     <button class="btn primary small" data-action="add-nearby" data-id="${esc(p.id)}">${fav ? `📍 Pin ${esc(fav.name)} here` : '+ Add to my sento'}</button>
     <a class="link" href="https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lon}" target="_blank" rel="noopener">Directions ↗</a>
   </div>`;
@@ -873,9 +972,12 @@ function placePopup(p) {
 
 function favPopup(s) {
   const os = openState(s);
+  const st = sentoStats(s.id);
   return `<div class="popup">
-    <b>♨ ${esc(s.name)}</b>
+    <small class="${st.count ? 'been' : 'want'}">${st.count ? `✓ Been ${st.count}×, last ${esc(lastWord(st.last))}` : '♨ Want to go'}</small>
+    <b>${esc(s.name)}</b>
     <small>${esc(weekSummary(s))}</small>
+    ${tattooLine(sentoTattoo(s))}
     ${os ? `<small class="status ${os.cls}">${esc(os.text)}</small>` : ''}
     <button class="btn small" data-action="edit-sento" data-id="${s.id}">Open</button>
     <a class="link" href="https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lon}" target="_blank" rel="noopener">Directions ↗</a>
@@ -886,14 +988,14 @@ function favPopup(s) {
 function addPlace(p) {
   const week = parseOsmHours(p.hours);
   S.sentos.push(touch({ id: uid(), name: p.name, notes: [p.en, p.website].filter(Boolean).join(' · '),
-    lat: p.lat, lon: p.lon, osm: p.id, ...(week ? { week } : {}) }));
+    lat: p.lat, lon: p.lon, osm: p.id, kind: p.type, ...(week ? { week } : {}) }));
   map?.closePopup();
   toast(week ? `${p.name} added ♨ Hours are from OpenStreetMap, worth a check` : `${p.name} added ♨ Add its hours in the List`, 4500);
 }
 
 // Pin an OpenStreetMap place onto one of your existing sento (keeps your hours if you set them).
 function pinPlace(p, s) {
-  Object.assign(s, { lat: p.lat, lon: p.lon, osm: p.id });
+  Object.assign(s, { lat: p.lat, lon: p.lon, osm: p.id, kind: p.type });
   if (!weekOf(s)) { const week = parseOsmHours(p.hours); if (week) s.week = week; }
   touch(s);
   map?.closePopup();
@@ -1102,6 +1204,12 @@ function openSento(s) {
       ${weekRows(s)}
       <button type="button" class="link copy-hours" data-copy-hours>Copy Monday’s hours to every open day</button>
     </fieldset>
+    <label class="field"><span>Tattoos</span>
+      <select name="tattoo">
+        <option value="">Not sure (${esc(tattooInfo(s.kind).good ? 'usually OK at sento' : 'often not allowed at super sento')})</option>
+        ${Object.entries(TATTOO).map(([k, t]) => `<option value="${k}" ${s.tattoo === k ? 'selected' : ''}>${t.icon} ${t.text}</option>`).join('')}
+      </select>
+    </label>
     <label class="field"><span>Notes <em>optional</em></span><textarea name="notes" rows="2" placeholder="Address, what you love about it…">${esc(s.notes)}</textarea></label>
     ${st?.count ? `<p class="hint">${st.count} visit${st.count > 1 ? 's' : ''} logged here.</p>` : ''}
     ${footer(isNew ? 'Add' : 'Save', isNew ? '' : deleteBtn)}`,
@@ -1121,7 +1229,7 @@ function openSento(s) {
     const week = DAYS.map((_, d) => fd.get(`closed${d}`) ? null : { open: fd.get(`open${d}`) || '', close: fd.get(`close${d}`) || '' });
     const blank = WEEK_ORDER.find(d => week[d] && (!week[d].open || !week[d].close));
     if (blank !== undefined) { toast(`Fill in ${DAYS_LONG[blank]}’s hours, or mark it closed`); return false; }
-    Object.assign(s, { name, week, notes: fd.get('notes').trim() });
+    Object.assign(s, { name, week, notes: fd.get('notes').trim(), tattoo: fd.get('tattoo') || '' });
     delete s.open; delete s.close; delete s.closed; // replaced by `week`
     touch(s);
     if (isNew) S.sentos.push(s);
@@ -1933,6 +2041,7 @@ const actions = {
   'sento-view': (_, el) => { sentoView = el.dataset.v; render(); },
   'milk-info': (_, el) => milkInfo(el.dataset.kind),
   'find-nearby': () => findNearby(true),
+  'map-filter': id => { mapFilter[id] = !mapFilter[id]; render(); },
   'search-area': () => {
     if (!map) return;
     const c = map.getCenter();
@@ -1970,7 +2079,7 @@ const actions = {
     fd => {
       if (fd.get('sentoId') === '__new') { addPlace(p); return; }
       const s = sentoOf(fd.get('sentoId'));
-      Object.assign(s, { lat: p.lat, lon: p.lon, osm: p.id });
+      Object.assign(s, { lat: p.lat, lon: p.lon, osm: p.id, kind: p.type });
       if (!weekOf(s)) { const week = parseOsmHours(p.hours); if (week) s.week = week; }
       touch(s);
       toast(`📍 ${s.name} is on the map`);
