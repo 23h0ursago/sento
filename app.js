@@ -6,7 +6,7 @@
 // phones later, swap store.load/save for a backend (see README).
 // ---------------------------------------------------------------------------
 
-const VERSION = 7; // shown in Settings; keep in step with CACHE in sw.js
+const VERSION = 8; // shown in Settings; keep in step with CACHE in sw.js
 const KEY = 'sento:v1';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -15,7 +15,7 @@ const $ = (s, el = document) => el.querySelector(s);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-const freshState = () => ({ v: 1, names: { a: '', b: 'Moka' }, calendar: { url: '', key: '' }, sentos: [], visits: [], deleted: [] });
+const freshState = () => ({ v: 1, names: { a: '', b: 'Moka' }, calendar: { url: '', key: '' }, goal: { perMonth: 4 }, sentos: [], visits: [], deleted: [] });
 
 const store = {
   load() {
@@ -37,6 +37,9 @@ let tab = 'go';
 const commit = () => { store.save(S); render(); scheduleSync(); };
 const touch = rec => { rec.u = Date.now(); markDirty(rec.id, rec.u); return rec; };
 const remove = (list, id) => { S.deleted.push(id); markDirty(id, Date.now()); return list.filter(r => r.id !== id); };
+
+// Settings-like records synced as a whole (each has S[id] and its edit time S[id + 'U']).
+const SINGLETONS = ['names', 'calendar', 'goal'];
 
 const sentoOf = id => S.sentos.find(s => s.id === id);
 const visitOf = id => S.visits.find(v => v.id === id);
@@ -216,13 +219,86 @@ function daysSinceLast() {
   return last ? daysBetween(last.date, today()) : null;
 }
 
-function nudge(days) {
-  if (days === null) return { level: 1, head: 'Your first soak awaits', text: 'Nothing logged yet. Pick a time below and make it a habit.' };
-  if (days === 0) return { level: 0, head: 'Fresh from the bath', text: 'You went today. Enjoy the afterglow ♨' };
-  if (days <= 3) return { level: 0.2 + days * 0.05, head: 'No rush', text: `Last soak was ${days} day${days > 1 ? 's' : ''} ago. Maybe later this week?` };
-  if (days <= 6) return { level: 0.5, head: 'A soak would be nice', text: `It’s been ${days} days. Here are some quiet times this week.` };
-  if (days <= 13) return { level: 0.8, head: 'Time to go!', text: `${days} days without a proper bath. The sooner slots are at the top.` };
-  return { level: 1, head: 'Seriously overdue', text: `${days} days?! Your shoulders are filing a complaint. Go as soon as you can.` };
+// ---------------------------------------------------------------------------
+// Milk bottles (top of "Should we go?")
+//   🥛 regular:    full right after a soak, drinks down to empty over MILK_DAYS
+//   🍓 strawberry: fills with this month's visits toward the monthly goal
+//   ☕ coffee:     fills with the weekly streak, full at STREAK_FULL weeks
+// ---------------------------------------------------------------------------
+
+const MILK_DAYS = 14;
+const STREAK_FULL = 8;
+const monthlyGoal = () => Math.max(1, Number(S.goal?.perMonth) || 4);
+
+// The message that goes with the regular milk level.
+function milkMessage(days) {
+  const d = `${days} day${days === 1 ? '' : 's'}`;
+  if (days === null) return { head: 'An empty bottle…', text: 'Log your first soak to pour the milk. Pick a time below!' };
+  if (days === 0) return { head: 'Freshly poured!', text: 'You went today. Enjoy that cold milk after the bath ♨' };
+  if (days <= 3) return { head: 'Still plenty of milk', text: `Last soak was ${d} ago. No rush, maybe later this week?` };
+  if (days <= 6) return { head: 'Half a bottle left', text: `It’s been ${d}. A soak and a cold milk would be nice soon.` };
+  if (days < MILK_DAYS) return { head: 'Running low…', text: `${d} without a bath! Time to soak and drink some milk.` };
+  return { head: 'The bottle’s empty!', text: `${d}?! Go soak and grab a milk as soon as you can.` };
+}
+
+const BOTTLES = {
+  regular:    { milk: '#FFFDF6', cap: '#9DB4EC', band: '#D9483B', label: '牛乳' },
+  strawberry: { milk: '#F7B9C9', cap: '#F29BB4', band: '#E0577C', label: 'いちご' },
+  coffee:     { milk: '#C08D5C', cap: '#EBA25A', band: '#8A5A2B', label: 'コーヒー' },
+};
+
+// A glass milk bottle with a paper cap tied with string; `level` is 0–1.
+function milkBottle(kind, level, pour) {
+  const b = BOTTLES[kind];
+  const top = 30, bottom = 132;                       // milk can fill from the neck to the base
+  const drop = (1 - Math.max(0, Math.min(1, level))) * (bottom - top);
+  const glass = 'M25 22H55V34C55 44 70 47 70 60V123Q70 132 61 132H19Q10 132 10 123V60C10 47 25 44 25 34Z';
+  return `<svg class="bottle${pour ? ' pour' : ''}" viewBox="0 0 80 140" style="--drop:${drop.toFixed(1)}px" aria-hidden="true">
+    <defs><clipPath id="glass-${kind}"><path d="${glass}"/></clipPath></defs>
+    <path d="${glass}" class="glass"/>
+    <g clip-path="url(#glass-${kind})">
+      <g class="milk"><rect x="0" y="${top}" width="80" height="${bottom - top + 4}" fill="${b.milk}"/>
+        <ellipse cx="40" cy="${top}" rx="34" ry="3.5" fill="${b.milk}" class="surface"/></g>
+    </g>
+    <rect x="10" y="80" width="60" height="21" fill="${b.band}" opacity=".92"/>
+    <text x="40" y="94.5" text-anchor="middle" fill="#fff" font-size="${b.label.length > 3 ? 10 : 11.5}" font-weight="900" class="bottle-label">${b.label}</text>
+    <path d="M17 64V118" class="shine"/>
+    <path d="${glass}" class="glass-edge"/>
+    <path d="M21 25Q20 12 40 10Q60 12 59 25Q55 29 50 26Q45 30 40 26Q35 30 30 26Q25 29 21 25Z" fill="${b.cap}" class="cap"/>
+    <path d="M23 22.5Q40 25.5 57 22.5" class="string"/>
+  </svg>`;
+}
+
+let milkPoured = false; // play the pour animation once per app launch
+
+function milkShelf(since) {
+  const visitsThisMonth = S.visits.filter(v => v.date.startsWith(today().slice(0, 7)) && v.date <= today()).length;
+  const goal = monthlyGoal();
+  const { current } = streaks();
+  const pour = !milkPoured;
+  milkPoured = true;
+  const shelf = [
+    { kind: 'regular', level: since === null ? 0 : 1 - since / MILK_DAYS,
+      name: 'Milk', value: since === null ? 'empty' : since === 0 ? 'today' : `${since}d ago` },
+    { kind: 'strawberry', level: visitsThisMonth / goal,
+      name: 'Strawberry', value: `${visitsThisMonth} / ${goal}${visitsThisMonth >= goal ? ' 🎉' : ''}` },
+    { kind: 'coffee', level: current / STREAK_FULL,
+      name: 'Coffee', value: `${current} wk streak` },
+  ];
+  return `<div class="shelf">${shelf.map(x => `
+    <button class="shelf-item" data-action="milk-info" data-kind="${x.kind}">
+      ${milkBottle(x.kind, x.level, pour)}
+      <b>${x.name}</b><small>${esc(x.value)}</small>
+    </button>`).join('')}</div>`;
+}
+
+function milkInfo(kind) {
+  const goal = monthlyGoal();
+  toast({
+    regular: `🥛 Full after a soak, empty after ${MILK_DAYS} days without one.`,
+    strawberry: `🍓 Fills up with this month’s visits. Goal: ${goal} (change it in Settings).`,
+    coffee: `☕ Fills with your weekly streak: full at ${STREAK_FULL} weeks in a row.`,
+  }[kind], 4000);
 }
 
 const TOGETHER = 120; // minutes you both need free (soak + getting there)
@@ -409,14 +485,13 @@ function openPhoto(id) {
 
 function viewGo() {
   const since = daysSinceLast();
-  const n = nudge(since);
+  const n = milkMessage(since);
   let h = `
-    <section class="card nudge" style="--level:${n.level}">
-      <div class="steam" aria-hidden="true"><i></i><i></i><i></i></div>
+    <section class="card nudge">
       <p class="eyebrow">${since === null ? 'Welcome' : since === 0 ? 'Last soak: today' : `Last soak: ${since} day${since > 1 ? 's' : ''} ago`}</p>
-      <h2>${esc(n.head)}</h2>
+      <h2 class="cute">${esc(n.head)}</h2>
       <p>${esc(n.text)}</p>
-      <div class="meter" role="img" aria-label="Bath urge ${Math.round(n.level * 100)}%"><span></span></div>
+      ${milkShelf(since)}
       <button class="btn primary wide" data-action="log">+ Log a visit</button>
     </section>`;
 
@@ -923,6 +998,8 @@ function openSettings() {
       <label class="field"><span>Your name</span><input name="a" value="${esc(S.names.a)}" autocomplete="given-name"></label>
       <label class="field"><span>Partner</span><input name="b" value="${esc(S.names.b)}"></label>
     </div>
+    <label class="field"><span>🍓 Monthly soak goal <em>fills the strawberry milk</em></span>
+      <input type="number" name="goal" min="1" max="31" inputmode="numeric" value="${monthlyGoal()}"></label>
     ${syncSection()}
     ${calendarSection()}
     <section class="sync">
@@ -953,6 +1030,12 @@ function openSettings() {
       S.names = names;
       S.namesU = Date.now();
       markDirty('names', S.namesU);
+    }
+    const goal = Math.round(Number(fd.get('goal')));
+    if (goal >= 1 && goal <= 31 && goal !== monthlyGoal()) {
+      S.goal = { perMonth: goal };
+      S.goalU = Date.now();
+      markDirty('goal', S.goalU);
     }
   });
 }
@@ -1079,7 +1162,7 @@ const inviteLink = code => `${location.origin}${location.pathname}#join=${normCo
 
 function recordFor(id) {
   const u = sync.state.dirty[id];
-  if (id === 'names' || id === 'calendar') return { id, kind: id, data: S[id], u };
+  if (SINGLETONS.includes(id)) return { id, kind: id, data: S[id], u };
   const s = sentoOf(id);
   if (s) return { id, kind: 'sento', data: s, u };
   const v = visitOf(id);
@@ -1091,8 +1174,7 @@ function connect(code) {
   const dirty = {};
   for (const r of [...S.sentos, ...S.visits]) dirty[r.id] = r.u || 1;
   for (const id of S.deleted) dirty[id] = Date.now();
-  if (S.namesU) dirty.names = S.namesU;
-  if (S.calendarU) dirty.calendar = S.calendarU;
+  for (const id of SINGLETONS) if (S[id + 'U']) dirty[id] = S[id + 'U'];
   sync.state = { code: prettyCode(code), dirty, at: 0 };
   sync.status = 'pending';
   saveSync();
@@ -1113,7 +1195,7 @@ function applyRemote(records) {
   let changed = false;
   for (const r of records) {
     if (sync.state.dirty[r.id]) continue; // our newer local edit is still on its way up
-    if (r.id === 'names' || r.id === 'calendar') {
+    if (SINGLETONS.includes(r.id)) {
       const uKey = r.id + 'U';
       if (!r.deleted && r.u > (S[uKey] || 0)) { S[r.id] = { ...S[r.id], ...r.data }; S[uKey] = r.u; changed = true; }
       continue;
@@ -1509,6 +1591,7 @@ const actions = {
   settings: openSettings,
   log: (_, el) => openVisit({ id: uid(), date: el?.dataset.date || today(), sentoId: el?.dataset.sento || pastVisits()[0]?.sentoId, rating: 0, note: '' }),
   'sento-view': (_, el) => { sentoView = el.dataset.v; render(); },
+  'milk-info': (_, el) => milkInfo(el.dataset.kind),
   'cal-filter': id => { calFilter = id; render(); },
   'cal-month': (_, el) => {
     const d = Number(el.dataset.d);

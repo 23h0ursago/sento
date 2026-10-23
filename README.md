@@ -2,7 +2,7 @@
 
 A tiny PWA for planning and tracking sento visits together. Plain HTML/CSS/JS with no build step and no dependencies.
 
-- **Should we go?** suggests quiet times this week (just after opening or late evening). It skips closing days, ranks weekends lower and nudges harder the longer it's been since the last soak.
+- **Should we go?** shows three milk bottles: 🥛 regular milk drinks down over two weeks without a soak, 🍓 strawberry fills toward your monthly goal (Settings), ☕ coffee fills with your weekly streak. Below them are quiet times this week (just after opening or late evening). It skips closing days, ranks weekends lower and suggests sooner days the longer it's been since the last soak.
 - **Favourites** stores each sento's name, opening hours and regular closing days.
 - **Log a visit** takes a date, a sento and an optional rating and note.
 - **History** shows past visits, visits this month and the longest streak (consecutive weeks with at least one visit).
