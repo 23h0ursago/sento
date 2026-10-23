@@ -6,7 +6,7 @@
 // phones later, swap store.load/save for a backend (see README).
 // ---------------------------------------------------------------------------
 
-const VERSION = 19; // shown in Settings; keep in step with CACHE in sw.js
+const VERSION = 20; // shown in Settings; keep in step with CACHE in sw.js
 const KEY = 'sento:v1';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -1473,7 +1473,7 @@ function openSettings() {
       disconnect();
       S = freshState();
       idbDo('readwrite', st => st.clear()).catch(() => {});
-      photoQ = { up: [], del: [] };
+      photoQ = { up: [], del: [], online: [] };
       savePhotoQ();
       return;
     }
@@ -1509,6 +1509,7 @@ function syncSection() {
   return `<section class="sync">
     <h3>Live sync <span class="sync-state" id="sync-line" data-s="${sync.status}">${esc(syncStatusText())}</span></h3>
     <p>Shared code: <code>${esc(st.code)}</code><br>Both phones must show the same code.</p>
+    ${photoQ.up.length ? `<p class="hint warn">📷 ${photoQ.up.length} photo${photoQ.up.length > 1 ? 's' : ''} waiting to upload${photoErr ? `: ${esc(photoErr)}` : '…'}. Keep the app installed until this is gone.</p>` : ''}
     <div class="two">
       <button type="button" class="btn primary" data-action="sync-invite">Invite ${esc(S.names.b || 'Moka')}</button>
       <button type="button" class="btn" data-action="sync-leave">Stop syncing</button>
@@ -1708,6 +1709,7 @@ function runSync() {
         fetchCalendar(); // picks up a calendar link added on the other phone
       }
       pushPhotos();
+      checkPhotosOnline();
     } catch (err) {
       sync.status = 'error';
       sync.error = err.message;
@@ -1804,8 +1806,21 @@ async function idbDo(mode, fn) {
     tx.onerror = () => reject(tx.error);
   });
 }
-const photoBlob = (id, size) => idbDo('readonly', st => st.get(`${id}:${size}`)).catch(() => null);
-const savePhotoBlob = (id, size, blob) => idbDo('readwrite', st => st.put(blob, `${id}:${size}`));
+// Photos are kept as raw bytes: iOS Safari can lose Blobs stored in IndexedDB after a restart.
+// readPhoto: the Blob, undefined if this phone doesn't have it; throws if it can't be read.
+async function readPhoto(id, size) {
+  const v = await idbDo('readonly', st => st.get(`${id}:${size}`));
+  if (v == null) return undefined;
+  if (v.buf) return new Blob([v.buf], { type: v.type || 'image/jpeg' });
+  // Older format: a Blob. Read it now, so a broken one fails here instead of later
+  const buf = await v.arrayBuffer();
+  return new Blob([buf], { type: v.type || 'image/jpeg' });
+}
+const photoBlob = (id, size) => readPhoto(id, size).catch(() => null);
+const savePhotoBlob = async (id, size, blob) => {
+  const buf = await blob.arrayBuffer();
+  return idbDo('readwrite', st => st.put({ buf, type: blob.type || 'image/jpeg' }, `${id}:${size}`));
+};
 const dropPhotoBlobs = id => idbDo('readwrite', st => { st.delete(`${id}:thumb`); st.delete(`${id}:full`); }).catch(() => {});
 
 // Profile photos: a centred square, smaller sizes
@@ -1856,6 +1871,7 @@ function photoUrl(id, size) {
           if (b64) {
             blob = fromBase64(b64);
             savePhotoBlob(id, size, blob).catch(() => {});
+            if (!photoQ.online.includes(id)) { photoQ.online.push(id); savePhotoQ(); }
           }
         } catch {}
       }
@@ -1894,7 +1910,8 @@ function fromBase64(b64) {
 }
 
 // Uploads and deletions waiting for the shared space: { up: [ids], del: [ids] }
-let photoQ = (() => { try { return { up: [], del: [], ...JSON.parse(localStorage.getItem(PHOTOQ_KEY)) }; } catch { return { up: [], del: [] }; } })();
+// up/del: waiting to upload / delete. online: ids confirmed in the shared space.
+let photoQ = (() => { try { return { up: [], del: [], online: [], ...JSON.parse(localStorage.getItem(PHOTOQ_KEY)) }; } catch { return { up: [], del: [], online: [] }; } })();
 let photoErr = '';
 let photoPushing = false;
 const savePhotoQ = () => { try { localStorage.setItem(PHOTOQ_KEY, JSON.stringify(photoQ)); } catch {} };
@@ -1911,27 +1928,49 @@ async function pushPhotos() {
   photoPushing = true;
   const household = normCode(sync.state.code);
   const done = (kind, id) => { photoQ[kind] = photoQ[kind].filter(x => x !== id); savePhotoQ(); };
+  const markOnline = id => { if (!photoQ.online.includes(id)) photoQ.online.push(id); };
+  let unreadable = 0;
   try {
     for (const id of [...photoQ.up]) {
-      const [thumb, full] = await Promise.all([photoBlob(id, 'thumb'), photoBlob(id, 'full')]);
+      let thumb, full;
+      try { [thumb, full] = await Promise.all([readPhoto(id, 'thumb'), readPhoto(id, 'full')]); }
+      catch (err) { unreadable++; console.warn('photo unreadable', id, err); continue; } // keep it queued
       if (thumb && full) {
         await rpc('sento_photo_put', { p_household: household, p_id: id, p_thumb: await toBase64(thumb), p_image: await toBase64(full) });
+        markOnline(id);
       }
-      done('up', id); // photos only on the other phone have nothing to upload
+      done('up', id); // not on this phone: the other phone uploads it
     }
     for (const id of [...photoQ.del]) {
       await rpc('sento_photo_delete', { p_household: household, p_id: id });
+      photoQ.online = photoQ.online.filter(x => x !== id);
       done('del', id);
     }
-    photoErr = '';
+    photoErr = unreadable ? `${unreadable} photo${unreadable > 1 ? 's' : ''} on this phone couldn’t be read` : '';
   } catch (err) {
-    photoErr = /404/.test(err.message) ? 'photo sharing isn’t set up in Supabase yet' : 'couldn’t upload, will retry';
+    photoErr = /404/.test(err.message) ? 'photo sharing isn’t set up in Supabase yet' : `couldn’t upload (${err.message}), will retry`;
     console.warn(err);
   } finally {
     photoPushing = false;
     updateSyncDot();
     if (tab === 'diary' && !sheet.open) render();
   }
+}
+
+// Photos in use: on visits and as profile photos.
+const usedPhotoIds = () => [...S.visits.flatMap(v => v.photos || []), ...Object.values(S.avatars || {}).filter(Boolean)];
+
+// Once per launch: anything this phone holds that isn't confirmed online goes back in the upload queue.
+// (Uploading again is harmless: the server keeps the first copy.)
+let photosChecked = false;
+async function checkPhotosOnline() {
+  if (photosChecked || !sync.state.code) return;
+  photosChecked = true;
+  for (const id of usedPhotoIds()) {
+    if (photoQ.online.includes(id) || photoQ.up.includes(id)) continue;
+    if (await photoBlob(id, 'thumb')) queuePhoto('up', id);
+  }
+  pushPhotos();
 }
 
 // Remove a photo everywhere: this phone, the shared space and any open <img>.
