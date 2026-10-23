@@ -58,7 +58,8 @@ body {
 }
 button { font: inherit; color: inherit; }
 h1, h2, h3, p { margin: 0; }
-svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+/* Line icons (header, tabs, buttons). Scoped so it doesn't touch the bottles or the map's own SVG. */
+.top svg, .tabs svg, .icon-btn svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
 /* Header: a noren curtain, split into panels at the bottom edge */
 .top {

@@ -6,7 +6,7 @@
 // phones later, swap store.load/save for a backend (see README).
 // ---------------------------------------------------------------------------
 
-const VERSION = 10; // shown in Settings; keep in step with CACHE in sw.js
+const VERSION = 11; // shown in Settings; keep in step with CACHE in sw.js
 const KEY = 'sento:v1';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -653,35 +653,53 @@ const locate = () => new Promise(resolve => {
     { timeout: 12000, maximumAge: 10 * 60000 });
 });
 
-// Public Overpass servers are often busy, so ask them together and take the first answer.
+// The public Overpass servers: the main one is reliable but often busy; the mirrors are a fallback.
 const OVERPASS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
   'https://overpass.private.coffee/api/interpreter',
 ];
-async function overpass(query) {
-  const ctrls = OVERPASS.map(() => new AbortController());
-  const timer = setTimeout(() => ctrls.forEach(c => c.abort()), 60000);
-  let busy = false;
+
+async function overpassOnce(url, query, ms) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  const fail = (msg, busy) => Object.assign(new Error(msg), { busy });
   try {
-    return await Promise.any(OVERPASS.map(async (url, i) => {
-      const res = await fetch(url, { method: 'POST', body: new URLSearchParams({ data: query }), signal: ctrls[i].signal });
-      if (!res.ok) { busy ||= [429, 502, 503, 504].includes(res.status); throw new Error(res.status); }
-      const json = await res.json();
-      ctrls.forEach((c, j) => j !== i && c.abort()); // got one: cancel the others
-      return json;
-    }));
-  } catch {
-    throw new Error(navigator.onLine === false ? 'you’re offline' : busy ? 'the map search is busy right now, try again in a minute' : 'couldn’t reach the map search');
+    const res = await fetch(url, { method: 'POST', body: new URLSearchParams({ data: query }), signal: ctrl.signal });
+    if (!res.ok) throw fail(`HTTP ${res.status}`, [429, 502, 503, 504].includes(res.status));
+    const json = await res.json();
+    // An overloaded server can answer "OK" with nothing in it, noting that it ran out of time
+    if (/timed out|runtime error|out of memory/i.test(json.remark || '')) throw fail(json.remark, true);
+    return json;
   } finally {
     clearTimeout(timer);
   }
 }
 
+// Main server; if it's busy, once more after a short wait; then the mirrors.
+async function overpass(query) {
+  const steps = [
+    { url: OVERPASS[0], ms: 100000 },
+    { url: OVERPASS[0], ms: 100000, onlyIfBusy: true, wait: 8000 },
+    { url: OVERPASS[1], ms: 30000 },
+    { url: OVERPASS[2], ms: 30000 },
+  ];
+  let busy = false;
+  for (const step of steps) {
+    if (step.onlyIfBusy && !busy) continue;
+    if (step.wait) await new Promise(r => setTimeout(r, step.wait));
+    try { return await overpassOnce(step.url, query, step.ms); }
+    catch (err) { busy ||= !!err.busy; }
+  }
+  throw new Error(navigator.onLine === false ? 'you’re offline' : busy ? 'the map search is busy right now, try again in a few minutes' : 'couldn’t reach the map search');
+}
+
 async function searchNearby(at) {
-  const around = `(around:${NEARBY_KM * 1000},${at.lat.toFixed(5)},${at.lon.toFixed(5)})`;
+  // A box around you is much quicker for the server than a circle; trim to NEARBY_KM on the phone.
+  const dLat = NEARBY_KM / 111.32, dLon = NEARBY_KM / (111.32 * Math.cos(at.lat * Math.PI / 180));
+  const box = `(${(at.lat - dLat).toFixed(4)},${(at.lon - dLon).toFixed(4)},${(at.lat + dLat).toFixed(4)},${(at.lon + dLon).toFixed(4)})`;
   // Sento are usually amenity=public_bath; some (like Kosugiyu) are tagged as a sauna or shower with 湯 in the name.
-  const q = `[out:json][timeout:40];(nwr["amenity"="public_bath"]${around};nwr["leisure"="sauna"]["name"~"湯"]${around};nwr["amenity"="shower"]["name"~"湯"]${around};);out center tags 400;`;
+  const q = `[out:json][timeout:90];(nwr["amenity"="public_bath"]${box};nwr["leisure"="sauna"]["name"~"湯"]${box};nwr["amenity"="shower"]["name"~"湯"]${box};);out center tags;`;
   const { elements = [] } = await overpass(q);
   const seen = new Set();
   const places = elements.map(e => {
@@ -693,13 +711,20 @@ async function searchNearby(at) {
     seen.add(id);
     return { id, name: t.name, en: t['name:en'] || t['name:ja-Latn'] || '', lat, lon,
       hours: t.opening_hours || '', website: t.website || t['contact:website'] || '', type: t['bath:type'] || '' };
-  }).filter(Boolean);
+  }).filter(p => p && kmBetween(at, p) <= NEARBY_KM + 0.5);
   nearby = { at: Date.now(), lat: at.lat, lon: at.lon, places };
   try { localStorage.setItem(NEARBY_KEY, JSON.stringify(nearby)); } catch {}
 }
 
 // Search around your location, or around `centre` (the middle of the map) when given.
+let nearbyBusy = false;
 async function findNearby(force = false, centre = null) {
+  if (nearbyBusy) return; // one search at a time (the server refuses parallel ones)
+  nearbyBusy = true;
+  try { await findNearbyNow(force, centre); } finally { nearbyBusy = false; }
+}
+
+async function findNearbyNow(force, centre) {
   nearbyAsked = true;
   nearbyStatus = centre ? '' : 'locating';
   render();
@@ -718,7 +743,10 @@ async function findNearby(force = false, centre = null) {
     nearbyStatus = 'searching';
     render();
     try { await searchNearby(pos); nearbyStatus = ''; }
-    catch (err) { nearbyStatus = err.message; }
+    catch (err) {
+      nearbyStatus = err.message;
+      // Keep showing the last results we have, measured from here
+    }
   } else {
     nearbyStatus = '';
   }
@@ -743,7 +771,7 @@ function viewMap() {
   const recs = [...ranked.slice(0, 3), ...ranked.slice(3).sort((a, b) => a.km - b.km)];
   const status = {
     locating: '📍 Finding where you are…',
-    searching: `🔎 Looking for sento within ${NEARBY_KM} km… (can take up to a minute)`,
+    searching: `🔎 Looking for sento within ${NEARBY_KM} km… The free map search is slow when busy, so this can take 1–2 minutes.`,
   }[nearbyStatus] || (nearbyStatus ? `⚠️ ${nearbyStatus}` : '');
   const unpinned = S.sentos.filter(s => s.lat == null);
   return `
@@ -756,6 +784,8 @@ function viewMap() {
       <button class="btn small" data-action="search-area">🔎 Search this area</button>
     </div>
     ${status ? `<p class="hint${nearbyStatus && !['locating', 'searching'].includes(nearbyStatus) ? ' warn' : ''}">${esc(status)}</p>` : ''}
+    ${nearbyStatus && !['locating', 'searching'].includes(nearbyStatus) && recs.length
+      ? `<p class="hint">Showing the results saved ${esc(lastSynced(nearby.at))}.</p>` : ''}
     ${recs.length ? `<div class="list">${recs.slice(0, 25).map((p, i) => {
       const week = parseOsmHours(p.hours);
       return `<div class="row nearby">
