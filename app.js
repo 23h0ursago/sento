@@ -6,7 +6,7 @@
 // phones later, swap store.load/save for a backend (see README).
 // ---------------------------------------------------------------------------
 
-const VERSION = 21; // shown in Settings; keep in step with CACHE in sw.js
+const VERSION = 22; // shown in Settings; keep in step with CACHE in sw.js
 const KEY = 'sento:v1';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -245,6 +245,7 @@ const BOTTLES = {
   regular:    { milk: '#FFFDF6', cap: '#9DB4EC', band: '#D9483B', label: '牛乳' },
   strawberry: { milk: '#F7B9C9', cap: '#F29BB4', band: '#E0577C', label: 'いちご' },
   coffee:     { milk: '#C08D5C', cap: '#EBA25A', band: '#8A5A2B', label: 'コーヒー' },
+  fruit:      { milk: '#FFD79A', cap: '#9CCF7E', band: '#F08A3C', label: 'フルーツ' },
 };
 
 // A glass milk bottle with a paper cap tied with string; `level` is 0–1.
@@ -302,6 +303,7 @@ const MILK_KINDS = [
   ['regular', '🥛', 'Milk'],
   ['strawberry', '🍓', 'Strawberry'],
   ['coffee', '☕', 'Coffee'],
+  ['fruit', '🍊', 'Fruit'],
 ];
 const milkCount = v => MILK_KINDS.reduce((n, [k]) => n + (Number(v.milk?.[k]) || 0), 0);
 const milkLine = v => MILK_KINDS.filter(([k]) => v.milk?.[k] > 0).map(([k, icon]) => `${icon} ${v.milk[k]}`).join(' · ');

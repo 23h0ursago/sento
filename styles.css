@@ -719,7 +719,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .crate-counts span { font-size: 13px; color: var(--muted); }
 .crate { width: 100%; max-width: 340px; height: auto; justify-self: center; display: block; }
 .crate-status { text-align: center; font-weight: 700; font-size: 14px; }
-.milk-tally { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 16px; font-size: 14px; color: var(--muted); }
+.milk-tally { display: grid; grid-template-columns: repeat(2, max-content); justify-content: center; gap: 4px 22px; font-size: 14px; color: var(--muted); }
 .milk-tally b { color: var(--ink); }
 .milk-steps { display: grid; gap: 8px; }
 .milk-step { display: grid; grid-template-columns: 1fr 40px 48px 40px; align-items: center; gap: 6px; }
