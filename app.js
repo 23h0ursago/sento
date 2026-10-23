@@ -6,7 +6,7 @@
 // phones later, swap store.load/save for a backend (see README).
 // ---------------------------------------------------------------------------
 
-const VERSION = 18; // shown in Settings; keep in step with CACHE in sw.js
+const VERSION = 19; // shown in Settings; keep in step with CACHE in sw.js
 const KEY = 'sento:v1';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -15,7 +15,7 @@ const $ = (s, el = document) => el.querySelector(s);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-const freshState = () => ({ v: 1, names: { a: '', b: 'Moka' }, calendar: { url: '', key: '' }, goal: { perMonth: 4 }, sentos: [], visits: [], deleted: [] });
+const freshState = () => ({ v: 1, names: { a: '', b: 'Moka' }, avatars: { a: '', b: '' }, calendar: { url: '', key: '' }, goal: { perMonth: 4 }, sentos: [], visits: [], deleted: [] });
 
 const store = {
   load() {
@@ -39,7 +39,7 @@ const touch = rec => { rec.u = Date.now(); markDirty(rec.id, rec.u); return rec;
 const remove = (list, id) => { S.deleted.push(id); markDirty(id, Date.now()); return list.filter(r => r.id !== id); };
 
 // Settings-like records synced as a whole (each has S[id] and its edit time S[id + 'U']).
-const SINGLETONS = ['names', 'calendar', 'goal'];
+const SINGLETONS = ['names', 'avatars', 'calendar', 'goal'];
 
 const sentoOf = id => S.sentos.find(s => s.id === id);
 const visitOf = id => S.visits.find(v => v.id === id);
@@ -423,6 +423,7 @@ const stars = n => n ? `<span class="stars-show" aria-label="${n} out of 5">${'�
 function render() {
   const { a, b } = S.names;
   $('#subtitle').textContent = a ? `${a} & ${b || 'Moka'}` : `with ${b || 'Moka'}`;
+  renderAvatars();
   document.querySelectorAll('[data-tab]').forEach(el => el.setAttribute('aria-current', el.dataset.tab === tab ? 'page' : 'false'));
   view.innerHTML = tab === 'go' ? viewGo() : tab === 'sentos' ? viewSentos() : tab === 'diary' ? viewDiary() : viewHistory();
   hydratePhotos(view);
@@ -1154,10 +1155,13 @@ sheet.addEventListener('click', e => {
   if (e.target === sheet || e.target.closest('[data-close]')) sheet.close();
   if (e.target.closest('[data-clear-rating]')) sheetForm.querySelectorAll('[name=rating]').forEach(r => (r.checked = false));
   if (e.target.closest('[data-copy-hours]')) copyMondayHours();
+  const rmAv = e.target.closest('[data-remove-avatar]');
+  if (rmAv) setAvatar(rmAv.dataset.removeAvatar, '');
   const rm = e.target.closest('[data-remove-photo]');
   if (rm) removePhotoFromForm(rm.dataset.removePhoto);
 });
 sheetForm.addEventListener('change', e => {
+  if (e.target.matches('[data-avatar]')) avatarFromInput(e.target);
   if (e.target.matches('[data-photo-input]')) addPhotosToForm(e.target);
   if (e.target.name === 'sentoId') $('#new-sento').hidden = e.target.value !== '__new';
   if (/^closed\d$/.test(e.target.name)) setDayClosed(e.target.closest('.day-row'), e.target.checked);
@@ -1628,6 +1632,7 @@ function connect(code) {
   saveSync();
   // Upload photos taken on this phone (ones that only exist on the other phone are skipped).
   for (const v of S.visits) for (const id of v.photos || []) queuePhoto('up', id);
+  for (const id of Object.values(S.avatars || {})) if (id) queuePhoto('up', id);
   return runSync();
 }
 
@@ -1803,20 +1808,27 @@ const photoBlob = (id, size) => idbDo('readonly', st => st.get(`${id}:${size}`))
 const savePhotoBlob = (id, size, blob) => idbDo('readwrite', st => st.put(blob, `${id}:${size}`));
 const dropPhotoBlobs = id => idbDo('readwrite', st => { st.delete(`${id}:thumb`); st.delete(`${id}:full`); }).catch(() => {});
 
+// Profile photos: a centred square, smaller sizes
+const AVATAR_SIZES = { thumb: [200, 0.8], full: [600, 0.82] };
+
 // Shrink a picked/taken photo into both sizes and keep it on this phone.
-async function addPhoto(file) {
+// With `square`, crop the middle square first (for profile photos).
+async function addPhoto(file, square = false) {
   const src = URL.createObjectURL(file);
   try {
     const img = new Image();
     img.src = src;
     await img.decode();
     const id = uid();
-    for (const [size, [max, quality]] of Object.entries(PHOTO_SIZES)) {
-      const r = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = img.naturalWidth, h = img.naturalHeight;
+    const side = Math.min(w, h);
+    const crop = square ? [(w - side) / 2, (h - side) / 2, side, side] : [0, 0, w, h];
+    for (const [size, [max, quality]] of Object.entries(square ? AVATAR_SIZES : PHOTO_SIZES)) {
+      const r = Math.min(1, max / Math.max(crop[2], crop[3]));
       const canvas = document.createElement('canvas');
-      canvas.width = Math.round(img.naturalWidth * r);
-      canvas.height = Math.round(img.naturalHeight * r);
-      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.width = Math.round(crop[2] * r);
+      canvas.height = Math.round(crop[3] * r);
+      canvas.getContext('2d').drawImage(img, ...crop, 0, 0, canvas.width, canvas.height);
       const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', quality));
       if (!blob) throw new Error('Couldn’t read that photo');
       await savePhotoBlob(id, size, blob);
@@ -1937,6 +1949,77 @@ function forgetPhoto(id) {
 const diaryPhotos = () => pastVisits().flatMap(v => (v.photos || []).map(id => ({ id, v })));
 
 // ---------------------------------------------------------------------------
+// Profile photos (the two circles in the top bar). S.avatars = { a: photoId, b: photoId },
+// stored like diary photos and synced to the other phone.
+// ---------------------------------------------------------------------------
+
+const personName = who => (who === 'a' ? S.names.a || 'You' : S.names.b || 'Moka');
+
+function avatarHtml(who) {
+  const id = S.avatars?.[who];
+  if (id) {
+    const src = photoSrc(id, 'thumb');
+    return `<img data-photo="${esc(id)}" data-size="thumb" alt="" ${src ? `src="${src}" data-ready="1"` : ''}>`;
+  }
+  return `<span class="initial">${esc([...personName(who)][0].toUpperCase())}</span>`;
+}
+
+let avatarsShown = '';
+function renderAvatars() {
+  const key = JSON.stringify([S.avatars, S.names]);
+  const box = $('#avatars');
+  if (key === avatarsShown && box.children.length) return; // unchanged: don't reload the images
+  avatarsShown = key;
+  box.innerHTML = ['a', 'b'].map(who => `<span class="av av-${who}">${avatarHtml(who)}</span>`).join('');
+  hydratePhotos(box);
+}
+
+function openProfiles() {
+  openSheet('Profile photos', `
+    <p class="hint">Shown at the top of the app on both phones.</p>
+    ${['a', 'b'].map(who => `
+      <div class="profile-row">
+        <span class="av big av-${who}">${avatarHtml(who)}</span>
+        <div class="grow">
+          <b>${esc(personName(who))}</b>
+          <div class="two">
+            <label class="btn small file-btn"><input type="file" accept="image/*" capture="user" data-avatar="${who}">🤳 Selfie</label>
+            <label class="btn small file-btn"><input type="file" accept="image/*" data-avatar="${who}">🖼 Choose</label>
+          </div>
+          ${S.avatars?.[who] ? `<button type="button" class="link" data-remove-avatar="${who}">Remove photo</button>` : ''}
+        </div>
+      </div>`).join('')}
+    <p class="hint">To change the names, use Settings.</p>`, null);
+}
+
+function setAvatar(who, id) {
+  const old = S.avatars?.[who];
+  S.avatars = { ...(S.avatars || {}), [who]: id };
+  S.avatarsU = Date.now();
+  markDirty('avatars', S.avatarsU);
+  if (id) queuePhoto('up', id);
+  if (old && old !== id) forgetPhoto(old);
+  store.save(S);
+  scheduleSync();
+  renderAvatars();
+  if (sheet.open) openProfiles();
+}
+
+async function avatarFromInput(input) {
+  const file = input.files[0];
+  const who = input.dataset.avatar;
+  input.value = '';
+  if (!file) return;
+  try {
+    toast('Adding photo…');
+    setAvatar(who, await addPhoto(file, true));
+    toast('Profile photo updated');
+  } catch (err) {
+    toast(err.message || 'Couldn’t use that photo');
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Google Calendar (via the Apps Script in google-apps-script/Code.gs)
 // The script returns only merged busy ranges [[startMs, endMs], …].
 // The link + key live in S.calendar, so live sync hands them to the other phone.
@@ -2040,6 +2123,7 @@ const actions = {
   log: (_, el) => openVisit({ id: uid(), date: el?.dataset.date || today(), sentoId: el?.dataset.sento || pastVisits()[0]?.sentoId, rating: 0, note: '' }),
   'sento-view': (_, el) => { sentoView = el.dataset.v; render(); },
   'milk-info': (_, el) => milkInfo(el.dataset.kind),
+  profiles: openProfiles,
   'find-nearby': () => findNearby(true),
   'map-filter': id => { mapFilter[id] = !mapFilter[id]; render(); },
   'search-area': () => {

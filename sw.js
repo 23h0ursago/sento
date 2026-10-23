@@ -1,7 +1,7 @@
 // Offline support: always try the network first so updates show up right away,
 // and fall back to the cached copy when offline.
 // Bump CACHE when you deploy so old files are cleared.
-const CACHE = 'sento-v18';
+const CACHE = 'sento-v19';
 const SHELL = [
   './',
   './index.html',
