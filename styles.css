@@ -72,7 +72,7 @@ h1, h2, h3, p { margin: 0; }
   gap: 12px;
   padding: calc(env(safe-area-inset-top) + 12px) max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left));
   background:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 150 64'%3E %3Cg stroke-linejoin='round'%3E %3Cpath d='M14 41H66L70 63H10ZM23 63Q40 47 57 63Z' fill='%23FFC4D2' fill-rule='evenodd' stroke='%23F08FA8' stroke-width='1.2'/%3E %3Crect x='7' y='35' width='66' height='8' rx='4' fill='%23FF9DB5' stroke='%23F07C9B' stroke-width='1.2'/%3E %3Cpath d='M17 13H63L58 35H22Z' fill='%23FFD84D' stroke='%23E9B21C' stroke-width='1.2'/%3E %3Cellipse cx='40' cy='13' rx='23' ry='4.6' fill='%23FFE993' stroke='%23E9B21C' stroke-width='1.2'/%3E %3Cellipse cx='40' cy='13.6' rx='18.5' ry='3' fill='%23F0BE2C'/%3E %3Cpath d='M21 18.5H59' stroke='%23FFF3BF' stroke-width='1.6' stroke-linecap='round'/%3E %3C/g%3E %3Ctext x='40' y='28.5' text-anchor='middle' font-family='Hiragino Sans,sans-serif' font-size='7.5' font-weight='800' fill='%23D9483B'%3E%E3%82%B1%E3%83%AD%E3%83%AA%E3%83%B3%3C/text%3E %3Cg stroke-linejoin='round'%3E %3Crect x='90' y='51' width='54' height='12' rx='5' fill='%23FFFFFF' stroke='%23B9DDF0' stroke-width='1.2'/%3E %3Crect x='95' y='40' width='45' height='12' rx='5' fill='%23F6FBFF' stroke='%23B9DDF0' stroke-width='1.2'/%3E %3C/g%3E %3Cpath d='M95 46.5H140M90 57.5H144' stroke='%235DB6E0' stroke-width='2'/%3E %3Cg fill='%23FFFFFF' fill-opacity='.85' stroke='%23FFFFFF' stroke-width='.8'%3E %3Ccircle cx='79' cy='20' r='3.2' fill-opacity='.35'/%3E%3Ccircle cx='85' cy='12' r='2' fill-opacity='.35'/%3E%3Ccircle cx='118' cy='31' r='2.6' fill-opacity='.35'/%3E %3C/g%3E %3C/svg%3E") right 60px bottom 0 / 150px auto no-repeat,
+    url("icons/bathset.svg") right 62px bottom 3px / auto 58px no-repeat,
     radial-gradient(rgba(255, 255, 255, .55) 1.6px, transparent 1.9px) 0 0 / 14px 14px,
     var(--noren);
   color: var(--noren-ink);
@@ -686,5 +686,5 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 
 /* Narrow phones: smaller bath set so it doesn't run into the title */
 @media (max-width: 359px) {
-  .top { background-size: 110px auto, 14px 14px, auto; background-position: right 56px bottom 0, 0 0, 0 0; }
+  .top { background-size: auto 48px, 14px 14px, auto; background-position: right 58px bottom 4px, 0 0, 0 0; }
 }
