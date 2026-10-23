@@ -6,7 +6,7 @@
 // phones later, swap store.load/save for a backend (see README).
 // ---------------------------------------------------------------------------
 
-const VERSION = 22; // shown in Settings; keep in step with CACHE in sw.js
+const VERSION = 23; // shown in Settings; keep in step with CACHE in sw.js
 const KEY = 'sento:v1';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -241,6 +241,31 @@ function milkMessage(days) {
   return { head: 'The bottle’s empty!', text: `${d}?! Go soak and grab a milk as soon as you can.` };
 }
 
+// The paper hood over a milk bottle's mouth: flat top, gathered sides with pleats,
+// tied with red string, and a small frill below the string.
+// (cx, y) is the top centre, hw the half width, h the height down to the frill, k the detail scale.
+function paperCap(cx, y, hw, h, color, k) {
+  const f = n => n.toFixed(2);
+  const l = cx - hw, r = cx + hw, bottom = y + h;
+  const hood = `M${f(l)} ${f(bottom)} L${f(l + .7 * k)} ${f(y + 2.6 * k)} Q${f(l + .9 * k)} ${f(y)} ${f(l + 3.4 * k)} ${f(y)}`
+    + ` H${f(r - 3.4 * k)} Q${f(r - .9 * k)} ${f(y)} ${f(r - .7 * k)} ${f(y + 2.6 * k)} L${f(r)} ${f(bottom)} Z`;
+  // frill: little scallops just below the string
+  const fl = l - 1.2 * k, fr = r + 1.2 * k, n = 6, step = (fr - fl) / n;
+  let frill = `M${f(fl)} ${f(bottom - 1.6 * k)}`;
+  for (let i = 0; i < n; i++) frill += ` Q${f(fl + step * (i + .5))} ${f(bottom + 3.2 * k)} ${f(fl + step * (i + 1))} ${f(bottom - .2 * k)}`;
+  frill += ` L${f(fr)} ${f(bottom - 2.2 * k)} H${f(fl)} Z`;
+  const pleats = [-.52, -.18, .18, .52].map(t =>
+    `<path d="M${f(cx + hw * t)} ${f(y + 3.4 * k)} L${f(cx + hw * t * 1.04)} ${f(bottom - 2 * k)}" stroke="#0B2230" stroke-opacity=".12" stroke-width="${f(.9 * k)}" stroke-linecap="round"/>`).join('');
+  return `<g class="paper-cap">
+    <path d="${frill}" fill="${color}"/>
+    <path d="${frill}" fill="#0B2230" fill-opacity=".08"/>
+    <path d="${hood}" fill="${color}"/>
+    ${pleats}
+    <ellipse cx="${f(cx)}" cy="${f(y + 1.7 * k)}" rx="${f(hw * .62)}" ry="${f(.95 * k)}" fill="#fff" fill-opacity=".4"/>
+    <path d="M${f(l - .3 * k)} ${f(bottom - 1.9 * k)} H${f(r + .3 * k)}" stroke="#C94B3F" stroke-width="${f(1.6 * k)}" stroke-linecap="round"/>
+  </g>`;
+}
+
 const BOTTLES = {
   regular:    { milk: '#FFFDF6', cap: '#9DB4EC', band: '#D9483B', label: '牛乳' },
   strawberry: { milk: '#F7B9C9', cap: '#F29BB4', band: '#E0577C', label: 'いちご' },
@@ -265,8 +290,7 @@ function milkBottle(kind, level, pour) {
     <text x="40" y="94.5" text-anchor="middle" fill="#fff" font-size="${b.label.length > 3 ? 10 : 11.5}" font-weight="900" class="bottle-label">${b.label}</text>
     <path d="M17 64V118" class="shine"/>
     <path d="${glass}" class="glass-edge"/>
-    <path d="M21 25Q20 12 40 10Q60 12 59 25Q55 29 50 26Q45 30 40 26Q35 30 30 26Q25 29 21 25Z" fill="${b.cap}" class="cap"/>
-    <path d="M23 22.5Q40 25.5 57 22.5" class="string"/>
+    ${paperCap(40, 9, 15.8, 17.5, b.cap, 1)}
   </svg>`;
 }
 
@@ -316,8 +340,7 @@ function crateBottle(kind, cx, base, s) {
     <path d="M${cx - w} ${base} V${top + 15 * s} C${cx - w} ${top + 9 * s} ${cx - neck} ${top + 8 * s} ${cx - neck} ${top + 3 * s} H${cx + neck} C${cx + neck} ${top + 8 * s} ${cx + w} ${top + 9 * s} ${cx + w} ${top + 15 * s} V${base} Z"
       fill="${b.milk}" stroke="#2B4756" stroke-opacity=".35" stroke-width="1"/>
     <path d="M${cx - w * .55} ${top + 17 * s} V${base - 4}" stroke="#fff" stroke-opacity=".7" stroke-width="${2 * s}" stroke-linecap="round"/>
-    <path d="M${cx - neck - 1.4 * s} ${top + 4 * s} Q${cx - neck - 1.4 * s} ${top - 3 * s} ${cx} ${top - 3.4 * s} Q${cx + neck + 1.4 * s} ${top - 3 * s} ${cx + neck + 1.4 * s} ${top + 4 * s} Z" fill="${b.cap}"/>
-    <path d="M${cx - neck - .6 * s} ${top + 2.6 * s} H${cx + neck + .6 * s}" stroke="#C94B3F" stroke-width="${1 * s}"/>
+    ${paperCap(cx, top - 3.6 * s, neck + 1.3 * s, 8.4 * s, b.cap, .5 * s)}
   </g>`;
 }
 

@@ -222,8 +222,6 @@ em { font-style: normal; font-weight: 400; color: var(--muted); font-size: 13px;
 @keyframes pour { from { transform: translateY(102px); } }
 .bottle .shine { stroke: #fff; stroke-width: 3.5; stroke-linecap: round; opacity: .55; }
 .bottle-label { font-family: var(--font); letter-spacing: .5px; }
-.bottle .cap { stroke: color-mix(in srgb, var(--ink) 18%, transparent); stroke-width: .8; }
-.bottle .string { fill: none; stroke: #C94B3F; stroke-width: 1.4; }
 @media (prefers-color-scheme: dark) {
   .bottle .glass { fill: #3B4B57; }
   .bottle .glass-edge { stroke: color-mix(in srgb, #fff 40%, transparent); }
