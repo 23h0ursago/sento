@@ -6,7 +6,7 @@
 // phones later, swap store.load/save for a backend (see README).
 // ---------------------------------------------------------------------------
 
-const VERSION = 20; // shown in Settings; keep in step with CACHE in sw.js
+const VERSION = 21; // shown in Settings; keep in step with CACHE in sw.js
 const KEY = 'sento:v1';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -290,6 +290,84 @@ function milkShelf(since) {
       ${milkBottle(x.kind, x.level, pour)}
       <b>${x.name}</b><small>${esc(x.value)}</small>
     </button>`).join('')}</div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Milk crate (History): every bottle of milk you log after a bath fills a slot.
+// A visit stores milk as { regular, strawberry, coffee } bottle counts.
+// ---------------------------------------------------------------------------
+
+const CRATE_SIZE = 12;
+const MILK_KINDS = [
+  ['regular', '🥛', 'Milk'],
+  ['strawberry', '🍓', 'Strawberry'],
+  ['coffee', '☕', 'Coffee'],
+];
+const milkCount = v => MILK_KINDS.reduce((n, [k]) => n + (Number(v.milk?.[k]) || 0), 0);
+const milkLine = v => MILK_KINDS.filter(([k]) => v.milk?.[k] > 0).map(([k, icon]) => `${icon} ${v.milk[k]}`).join(' · ');
+
+// One milk bottle standing in a crate slot: only the top shows above the crate wall.
+function crateBottle(kind, cx, base, s) {
+  const b = BOTTLES[kind];
+  const w = 11 * s, neck = 5.2 * s, top = base - 46 * s;
+  return `<g>
+    <path d="M${cx - w} ${base} V${top + 15 * s} C${cx - w} ${top + 9 * s} ${cx - neck} ${top + 8 * s} ${cx - neck} ${top + 3 * s} H${cx + neck} C${cx + neck} ${top + 8 * s} ${cx + w} ${top + 9 * s} ${cx + w} ${top + 15 * s} V${base} Z"
+      fill="${b.milk}" stroke="#2B4756" stroke-opacity=".35" stroke-width="1"/>
+    <path d="M${cx - w * .55} ${top + 17 * s} V${base - 4}" stroke="#fff" stroke-opacity=".7" stroke-width="${2 * s}" stroke-linecap="round"/>
+    <path d="M${cx - neck - 1.4 * s} ${top + 4 * s} Q${cx - neck - 1.4 * s} ${top - 3 * s} ${cx} ${top - 3.4 * s} Q${cx + neck + 1.4 * s} ${top - 3 * s} ${cx + neck + 1.4 * s} ${top + 4 * s} Z" fill="${b.cap}"/>
+    <path d="M${cx - neck - .6 * s} ${top + 2.6 * s} H${cx + neck + .6 * s}" stroke="#C94B3F" stroke-width="${1 * s}"/>
+  </g>`;
+}
+
+// A yellow bottle crate (3 rows × 4 slots), filled with `kinds` front row first.
+function milkCrate(kinds) {
+  // The crate's inside: back rim at y 66 (x 30–220) widening to the front rim at y 122 (x 16–234).
+  const edges = y => { const t = (y - 66) / 56; return [30 - 14 * t, 220 + 14 * t]; };
+  const cellX = (y, i) => { const [l, r] = edges(y); return l + (r - l) * i / 4; };
+  const rows = [{ y: 84, s: .8 }, { y: 101, s: .9 }, { y: 119, s: 1 }]; // back, middle, front
+  const slots = [];
+  for (const r of [rows[2], rows[1], rows[0]]) for (let i = 0; i < 4; i++) slots.push({ cx: (cellX(r.y, i) + cellX(r.y, i + 1)) / 2, base: r.y, s: r.s });
+  const draw = slots.map((sl, i) => (kinds[i] ? { ...sl, kind: kinds[i] } : null)).filter(Boolean)
+    .sort((a, b) => a.base - b.base); // back rows first
+  // dividers inside the crate
+  const grid = [];
+  for (let i = 1; i < 4; i++) grid.push(`<path d="M${cellX(68, i).toFixed(1)} 68 L${cellX(122, i).toFixed(1)} 122" stroke="#C99A12" stroke-width="2"/>`);
+  for (const y of [86, 103]) { const [l, r] = edges(y); grid.push(`<path d="M${l.toFixed(1)} ${y} H${r.toFixed(1)}" stroke="#C99A12" stroke-width="2"/>`); }
+  // ribs on the front wall
+  const ribs = [];
+  for (let x = 30; x <= 222; x += 8) if (x < 98 || x > 154) ribs.push(`<path d="M${x} 136 V160" stroke="#E0A814" stroke-width="2" stroke-linecap="round"/>`);
+  return `<svg class="crate" viewBox="0 40 250 136" role="img" aria-label="Milk crate with ${kinds.length} of ${CRATE_SIZE} bottles">
+    <ellipse cx="125" cy="170" rx="104" ry="4.5" fill="#0B2230" fill-opacity=".1"/>
+    <path d="M30 66 H220 L234 122 H16 Z" fill="#D9A60F"/>
+    ${grid.join('')}
+    <path d="M30 66 H220" stroke="#FFD84A" stroke-width="5" stroke-linecap="round"/>
+    ${draw.map(sl => crateBottle(sl.kind, sl.cx, sl.base, sl.s)).join('')}
+    <path d="M14 120 H236 V160 Q236 168 228 168 H22 Q14 168 14 160 Z" fill="#F7C62C"/>
+    <path d="M14 120 H236 V130 H14 Z" fill="#FFD84A"/>
+    ${ribs.join('')}
+    <rect x="104" y="136" width="42" height="12" rx="6" fill="#C99A12"/>
+    <path d="M14 120 H236 V160 Q236 168 228 168 H22 Q14 168 14 160 Z" fill="none" stroke="#C99A12" stroke-width="1.5"/>
+  </svg>`;
+}
+
+function crateCard(visits) {
+  // every bottle, oldest first, so the crate fills in the order you drank them
+  const bottles = visits.slice().reverse().flatMap(v => MILK_KINDS.flatMap(([k]) => Array(Number(v.milk?.[k]) || 0).fill(k)));
+  const total = bottles.length;
+  const inCrate = total ? ((total - 1) % CRATE_SIZE) + 1 : 0;
+  const fullCrates = total ? Math.ceil(total / CRATE_SIZE) - 1 : 0;
+  const byKind = MILK_KINDS.map(([k, icon, name]) => ({ icon, name, n: bottles.filter(b => b === k).length }));
+  return `<section class="card crate-card">
+    <div class="crate-counts">
+      <div><b>${visits.length}</b><span>visit${visits.length === 1 ? '' : 's'} in all</span></div>
+      <div><b>${total}</b><span>bottle${total === 1 ? '' : 's'} of milk</span></div>
+    </div>
+    ${milkCrate(bottles.slice(total - inCrate))}
+    <p class="crate-status">${total === 0 ? 'Log a milk after your next soak to put the first bottle in the crate.'
+      : inCrate === CRATE_SIZE ? `${fullCrates + 1} full crate${fullCrates ? 's' : ''}! The next bottle starts crate ${fullCrates + 2}.`
+      : `Crate ${fullCrates + 1}: ${inCrate} of ${CRATE_SIZE} bottles${fullCrates ? ` · ${fullCrates} full crate${fullCrates > 1 ? 's' : ''} before it` : ''}`}</p>
+    <div class="milk-tally">${byKind.map(m => `<span>${m.icon} ${m.name} <b>${m.n}</b></span>`).join('')}</div>
+  </section>`;
 }
 
 function milkInfo(kind) {
@@ -1083,19 +1161,9 @@ function viewCalendar(list) {
 
 function viewHistory() {
   const visits = pastVisits();
-  const month = today().slice(0, 7);
-  const thisMonth = visits.filter(v => v.date.startsWith(month)).length;
-  const { longest, current } = streaks();
-  const wk = n => `${n} week${n === 1 ? '' : 's'}`;
-
   let h = `
     <h2 class="page-title">History</h2>
-    <div class="stats">
-      <div class="stat"><b>${thisMonth}</b><span>this month</span></div>
-      <div class="stat"><b>${longest}</b><span>longest streak (weeks)</span></div>
-      <div class="stat"><b>${visits.length}</b><span>visits in all</span></div>
-    </div>
-    <p class="hint">${current ? `Current streak: ${wk(current)} in a row with at least one soak.` : 'A streak counts weeks in a row with at least one soak.'}</p>
+    ${crateCard(visits)}
     <button class="btn primary wide" data-action="log">+ Log a visit</button>`;
 
   if (!visits.length) return h + `<p class="empty-note">No visits yet.</p>`;
@@ -1111,7 +1179,7 @@ function viewHistory() {
     const d = parseDay(v.date);
     h += `<button class="row" data-action="edit-visit" data-id="${v.id}">
       <span class="date"><small>${DAYS[d.getDay()]}</small><b>${d.getDate()}</b></span>
-      <span class="grow"><b>${esc(sentoOf(v.sentoId)?.name || 'Unknown sento')}</b>${v.note ? `<small class="note">${esc(v.note)}</small>` : ''}${v.photos?.length ? `<small>📷 ${v.photos.length}</small>` : ''}</span>
+      <span class="grow"><b>${esc(sentoOf(v.sentoId)?.name || 'Unknown sento')}</b>${v.note ? `<small class="note">${esc(v.note)}</small>` : ''}${milkLine(v) || v.photos?.length ? `<small>${[milkLine(v), v.photos?.length ? `📷 ${v.photos.length}` : ''].filter(Boolean).join(' · ')}</small>` : ''}</span>
       ${stars(v.rating)}
     </button>`;
   }
@@ -1155,6 +1223,11 @@ sheet.addEventListener('click', e => {
   if (e.target === sheet || e.target.closest('[data-close]')) sheet.close();
   if (e.target.closest('[data-clear-rating]')) sheetForm.querySelectorAll('[name=rating]').forEach(r => (r.checked = false));
   if (e.target.closest('[data-copy-hours]')) copyMondayHours();
+  const step = e.target.closest('[data-milk-step]');
+  if (step) {
+    const input = sheetForm.elements[`milk_${step.dataset.milkStep}`];
+    input.value = Math.max(0, Math.min(9, (Number(input.value) || 0) + Number(step.dataset.d)));
+  }
   const rmAv = e.target.closest('[data-remove-avatar]');
   if (rmAv) setAvatar(rmAv.dataset.removeAvatar, '');
   const rm = e.target.closest('[data-remove-photo]');
@@ -1258,6 +1331,17 @@ function openVisit(v) {
         <input type="radio" id="r${n}" name="rating" value="${n}" ${v.rating === n ? 'checked' : ''}><label for="r${n}" aria-label="${n} star${n > 1 ? 's' : ''}">★</label>`).join('')}
       </div>
     </fieldset>
+    <fieldset class="field">
+      <legend>Milk after the bath <em>optional</em></legend>
+      <div class="milk-steps">${MILK_KINDS.map(([k, icon, name]) => `
+        <div class="milk-step">
+          <span>${icon} ${name}</span>
+          <button type="button" class="step" data-milk-step="${k}" data-d="-1" aria-label="One less ${name.toLowerCase()}">−</button>
+          <input name="milk_${k}" type="number" min="0" max="9" inputmode="numeric" value="${Number(v.milk?.[k]) || 0}" aria-label="${name} bottles">
+          <button type="button" class="step" data-milk-step="${k}" data-d="1" aria-label="One more ${name.toLowerCase()}">+</button>
+        </div>`).join('')}
+      </div>
+    </fieldset>
     <label class="field"><span>Note <em>optional</em></span><textarea name="note" rows="3" placeholder="Hot bath was perfect, coffee milk after…">${esc(v.note)}</textarea></label>
     <fieldset class="field">
       <legend>Photos <em>optional</em></legend>
@@ -1292,7 +1376,8 @@ function openVisit(v) {
     for (const id of v.photos || []) if (!photos.includes(id)) forgetPhoto(id); // removed with ×
     for (const id of photos) if (photoDraft.added.has(id)) queuePhoto('up', id);
     photoDraft.saved = true;
-    Object.assign(v, { date, sentoId, rating: Number(fd.get('rating')) || 0, note: fd.get('note').trim(), photos });
+    const milk = Object.fromEntries(MILK_KINDS.map(([k]) => [k, Math.max(0, Math.min(9, Math.round(Number(fd.get(`milk_${k}`)) || 0)))]));
+    Object.assign(v, { date, sentoId, rating: Number(fd.get('rating')) || 0, note: fd.get('note').trim(), photos, milk });
     touch(v);
     if (isNew) S.visits.push(v);
   });

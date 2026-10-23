@@ -273,18 +273,6 @@ button.row:active { background: var(--surface-2); }
 
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 
-.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.stat {
-  display: grid;
-  align-content: start;
-  gap: 2px;
-  padding: 14px 12px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-}
-.stat b { font-size: 30px; line-height: 1; font-variant-numeric: tabular-nums; }
-.stat span { font-size: 12px; color: var(--muted); line-height: 1.25; }
 
 /* Bottom sheet */
 #sheet {
@@ -722,3 +710,25 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .brand > div { min-width: 0; max-width: 48vw; }
 .top p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .profile-row .link { justify-self: start; padding-left: 0; }
+
+/* Milk crate (History) */
+.crate-card { display: grid; gap: 10px; }
+.crate-counts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.crate-counts div { display: grid; gap: 2px; }
+.crate-counts b { font: 900 34px/1 var(--font); font-variant-numeric: tabular-nums; }
+.crate-counts span { font-size: 13px; color: var(--muted); }
+.crate { width: 100%; max-width: 340px; height: auto; justify-self: center; display: block; }
+.crate-status { text-align: center; font-weight: 700; font-size: 14px; }
+.milk-tally { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 16px; font-size: 14px; color: var(--muted); }
+.milk-tally b { color: var(--ink); }
+.milk-steps { display: grid; gap: 8px; }
+.milk-step { display: grid; grid-template-columns: 1fr 40px 48px 40px; align-items: center; gap: 6px; }
+.milk-step span { font-weight: 700; }
+.milk-step input { text-align: center; padding: 8px 4px; min-height: 40px; }
+.step { min-height: 40px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); font-size: 20px; font-weight: 700; cursor: pointer; }
+.step:active { transform: scale(.94); }
+
+/* Keep [hidden] hidden even on elements that set display (e.g. .field) */
+[hidden] { display: none !important; }
+.milk-step input::-webkit-inner-spin-button, .milk-step input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.milk-step input { -moz-appearance: textfield; appearance: textfield; }
