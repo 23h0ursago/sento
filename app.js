@@ -6,7 +6,7 @@
 // phones later, swap store.load/save for a backend (see README).
 // ---------------------------------------------------------------------------
 
-const VERSION = 8; // shown in Settings; keep in step with CACHE in sw.js
+const VERSION = 9; // shown in Settings; keep in step with CACHE in sw.js
 const KEY = 'sento:v1';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -628,7 +628,7 @@ function viewCalendar(list) {
         <button class="cal-nav" data-action="cal-month" data-d="1" aria-label="Next month">›</button>
       </header>
       ${only ? `<p class="cal-hours">🕒 ${esc(weekSummary(only))}</p>` : ''}
-      <div class="cal-week">${WEEK_ORDER.map(d => `<span class="${d === 0 || d === 6 ? 'we' : ''}">${'日月火水木金土'[d]}</span>`).join('')}</div>
+      <div class="cal-week">${WEEK_ORDER.map(d => `<span class="${d === 6 ? 'sat' : d === 0 ? 'sun' : ''}">${'日月火水木金土'[d]}</span>`).join('')}</div>
       <div class="cal-grid">${cells}</div>
       ${calMonth !== now.slice(0, 7) ? '<button class="link cal-today" data-action="cal-month" data-d="0">Back to this month</button>' : ''}
     </section>

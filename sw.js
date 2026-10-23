@@ -1,7 +1,7 @@
 // Offline support: always try the network first so updates show up right away,
 // and fall back to the cached copy when offline.
 // Bump CACHE when you deploy so old files are cleared.
-const CACHE = 'sento-v8';
+const CACHE = 'sento-v9';
 const SHELL = [
   './',
   './index.html',
@@ -27,9 +27,24 @@ self.addEventListener('activate', e => {
   );
 });
 
+const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
+
 self.addEventListener('fetch', e => {
   const { request } = e;
-  if (request.method !== 'GET' || new URL(request.url).origin !== location.origin) return;
+  if (request.method !== 'GET') return;
+  const url = new URL(request.url);
+  // Zen Maru Gothic: keep a copy so the app looks the same offline
+  if (FONT_HOSTS.includes(url.hostname)) {
+    e.respondWith(caches.open(CACHE).then(async cache => {
+      const hit = await cache.match(request);
+      if (hit) return hit;
+      const res = await fetch(request);
+      if (res.ok || res.type === 'opaque') cache.put(request, res.clone());
+      return res;
+    }));
+    return;
+  }
+  if (url.origin !== location.origin) return;
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);
     try {

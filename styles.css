@@ -1,37 +1,45 @@
+/* Bath tile & Fuji: aqua tiles, the blue Mt Fuji mural, steam white and a sunset-orange accent */
 :root {
-  --bg: #F4EDE2;
-  --surface: #FFFCF6;
-  --surface-2: #EEE5D6;
-  --ink: #1E2633;
-  --muted: #736A5E;
-  --line: #E2D7C4;
-  --noren: #22385A;
-  --noren-ink: #F6EFE3;
-  --primary: #22385A;
+  --bg: #EEF6F7;          /* steam white */
+  --surface: #FFFFFF;
+  --surface-2: #E1EFF1;
+  --ink: #1D3440;         /* deep teal */
+  --muted: #5D7883;
+  --line: #CDE2E5;
+  --noren: #2C7DA0;       /* header: Fuji mural blue */
+  --noren-ink: #FFFFFF;
+  --primary: #2C7DA0;
   --primary-ink: #FFFFFF;
-  --accent: #22385A;
-  --red: #B5372B;
-  --gold: #D39A2B;
-  --ok: #2E7656;
-  --shadow: 0 1px 2px rgba(30, 38, 51, .05), 0 8px 24px rgba(30, 38, 51, .06);
+  --accent: #2C7DA0;
+  --sun: #F28C38;         /* sunset orange */
+  --sun-ink: #FFFFFF;
+  --tile: #9ED8DB;        /* aqua bath tile */
+  --red: #D04A3A;         /* closed days, warnings, the 湯 stamp */
+  --gold: #F2A93B;
+  --ok: #2E8A68;
+  --shadow: 0 1px 2px rgba(29, 52, 64, .05), 0 8px 24px rgba(44, 125, 160, .08);
   --radius: 18px;
+  --font: "Zen Maru Gothic", -apple-system, "Hiragino Maru Gothic ProN", "Hiragino Sans", system-ui, sans-serif;
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #10151D;
-    --surface: #19212C;
-    --surface-2: #222C39;
-    --ink: #ECE5D8;
-    --muted: #9CA3AE;
-    --line: #2C3746;
-    --noren: #1A2B45;
-    --primary: #3F6198;
-    --accent: #A4BFE8;
-    --red: #E36A5C;
-    --gold: #E8B856;
-    --ok: #5DBB92;
+    --bg: #0D1A21;
+    --surface: #14252E;
+    --surface-2: #1B313C;
+    --ink: #E2F0F2;
+    --muted: #8DA9B3;
+    --line: #25404C;
+    --noren: #1D5E7C;
+    --primary: #3592BA;
+    --accent: #8CCFE6;
+    --sun: #F59A4D;
+    --sun-ink: #1D1206;
+    --tile: #2D6A70;
+    --red: #EE6B5B;
+    --gold: #F2B54E;
+    --ok: #5DC9A0;
     --shadow: none;
     color-scheme: dark;
   }
@@ -44,7 +52,7 @@ body {
   min-height: 100dvh;
   background: var(--bg);
   color: var(--ink);
-  font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Segoe UI", system-ui, sans-serif;
+  font: 500 16px/1.5 var(--font);
   -webkit-tap-highlight-color: transparent;
   padding-bottom: calc(76px + env(safe-area-inset-bottom));
 }
@@ -62,7 +70,11 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
   justify-content: space-between;
   gap: 12px;
   padding: calc(env(safe-area-inset-top) + 12px) max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left));
-  background: var(--noren);
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 60'%3E%3Cpath d='M28 60 62 22q6-5 12-2l6 4 6-4q6-3 12 2l34 38Z' fill='%23fff' opacity='.16'/%3E%3Cpath d='M62 22q6-5 12-2l6 4 6-4q6-3 12 2l-6 6-6-3-6 4-6-4-6 3Z' fill='%23fff' opacity='.5'/%3E%3Cpath d='M0 54q10-5 20 0t20 0 20 0 20 0 20 0 20 0 20 0 20 0V60H0Z' fill='%23fff' opacity='.14'/%3E%3C/svg%3E") right 8px bottom / 150px auto no-repeat,
+    linear-gradient(rgba(255, 255, 255, .07) 1px, transparent 1px) 0 0 / 16px 16px,
+    linear-gradient(90deg, rgba(255, 255, 255, .07) 1px, transparent 1px) 0 0 / 16px 16px,
+    var(--noren);
   color: var(--noren-ink);
 }
 .top::after {
@@ -80,10 +92,10 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
   border-radius: 50%;
   background: var(--noren-ink);
   color: var(--noren);
-  font-weight: 800;
+  font-weight: 900;
   font-size: 22px;
 }
-.top h1 { font-size: 19px; letter-spacing: .02em; }
+.top h1 { font-size: 20px; font-weight: 900; letter-spacing: .02em; }
 .top p { font-size: 13px; opacity: .75; }
 .icon-btn {
   display: grid;
@@ -128,7 +140,7 @@ main {
   background: none;
   color: var(--muted);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
 }
 .tabs button[aria-current="page"] { color: var(--accent); }
@@ -158,7 +170,7 @@ em { font-style: normal; font-weight: 400; color: var(--muted); font-size: 13px;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--surface);
-  font-weight: 650;
+  font-weight: 700;
   text-decoration: none;
   cursor: pointer;
 }
@@ -200,7 +212,7 @@ em { font-style: normal; font-weight: 400; color: var(--muted); font-size: 13px;
   padding: 0;
   border: 0;
   background: none;
-  font-family: "Zen Maru Gothic", -apple-system, "Hiragino Sans", sans-serif;
+  font-family: var(--font);
   cursor: pointer;
 }
 .shelf-item:active .bottle { transform: rotate(-6deg) scale(.97); }
@@ -214,7 +226,7 @@ em { font-style: normal; font-weight: 400; color: var(--muted); font-size: 13px;
 .bottle.pour .milk { animation: pour 1.1s cubic-bezier(.3, .7, .3, 1) both; }
 @keyframes pour { from { transform: translateY(102px); } }
 .bottle .shine { stroke: #fff; stroke-width: 3.5; stroke-linecap: round; opacity: .55; }
-.bottle-label { font-family: "Zen Maru Gothic", "Hiragino Sans", sans-serif; letter-spacing: .5px; }
+.bottle-label { font-family: var(--font); letter-spacing: .5px; }
 .bottle .cap { stroke: color-mix(in srgb, var(--ink) 18%, transparent); stroke-width: .8; }
 .bottle .string { fill: none; stroke: #C94B3F; stroke-width: 1.4; }
 @media (prefers-color-scheme: dark) {
@@ -244,9 +256,9 @@ button.row:active { background: var(--surface-2); }
 .row .note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .when { display: grid; min-width: 92px; }
 .when b { font-size: 15px; }
-.slot.best { border-color: var(--accent); box-shadow: inset 4px 0 0 var(--accent); }
-.pill { font-size: 12px; font-weight: 700; color: var(--primary-ink); background: var(--primary); padding: 4px 9px; border-radius: 99px; white-space: nowrap; }
-.status { font-size: 12px; font-weight: 650; white-space: nowrap; color: var(--muted); }
+.slot.best { border-color: var(--sun); box-shadow: inset 4px 0 0 var(--sun); }
+.pill { font-size: 12px; font-weight: 900; color: var(--sun-ink); background: var(--sun); padding: 4px 9px; border-radius: 99px; white-space: nowrap; }
+.status { font-size: 12px; font-weight: 700; white-space: nowrap; color: var(--muted); }
 .status.on { color: var(--ok); }
 .status.off { color: var(--red); }
 .date {
@@ -317,7 +329,7 @@ button.row:active { background: var(--surface-2); }
 
 /* Form fields */
 .field { display: grid; gap: 6px; border: 0; margin: 0; padding: 0; min-width: 0; }
-.field > span, .field > legend { font-size: 14px; font-weight: 650; padding: 0; margin-bottom: 6px; }
+.field > span, .field > legend { font-size: 14px; font-weight: 700; padding: 0; margin-bottom: 6px; }
 fieldset.field > legend { display: flex; align-items: baseline; gap: 6px; }
 input, select, textarea {
   width: 100%;
@@ -347,29 +359,37 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   border-radius: 99px;
   background: var(--surface);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
 }
 .chip[aria-pressed="true"] { background: var(--primary); border-color: transparent; color: var(--primary-ink); }
 .dot, .cal-dots i, .sp-sento i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--dot); flex: none; }
 .chip[aria-pressed="true"] .dot { box-shadow: 0 0 0 2px var(--primary-ink); }
 .seg { display: grid; grid-template-columns: 1fr 1fr; padding: 4px; gap: 4px; border-radius: 14px; background: var(--surface-2); }
-.seg-btn { border: 0; padding: 9px; border-radius: 10px; background: none; font-weight: 650; font-size: 14px; color: var(--muted); cursor: pointer; }
+.seg-btn { border: 0; padding: 9px; border-radius: 10px; background: none; font-weight: 700; font-size: 14px; color: var(--muted); cursor: pointer; }
 .seg-btn[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
 .count { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; margin-left: 4px; border-radius: 99px; background: var(--surface-2); font-size: 12px; }
 .special-line { color: var(--ink) !important; }
 
 /* Playful month calendar */
-.cute { font-family: "Zen Maru Gothic", -apple-system, "Hiragino Maru Gothic ProN", "Hiragino Sans", system-ui, sans-serif; }
+.cute { font-family: var(--font); }
 .cal {
   padding: 16px 12px 14px;
   border-radius: 24px;
   background:
-    radial-gradient(circle at 12% 8%, color-mix(in srgb, var(--red) 10%, transparent) 0 60px, transparent 61px),
-    radial-gradient(circle at 92% 0%, color-mix(in srgb, #8DB8E8 22%, transparent) 0 80px, transparent 81px),
+    radial-gradient(circle at 12% 8%, color-mix(in srgb, var(--sun) 14%, transparent) 0 60px, transparent 61px),
+    radial-gradient(circle at 92% 0%, color-mix(in srgb, var(--tile) 35%, transparent) 0 80px, transparent 81px),
     var(--surface);
   border: 2px solid var(--line);
   box-shadow: var(--shadow);
+}
+@media (prefers-color-scheme: dark) {
+  .cal {
+    background:
+      radial-gradient(circle at 12% 8%, color-mix(in srgb, var(--tile) 22%, transparent) 0 60px, transparent 61px),
+      radial-gradient(circle at 92% 0%, color-mix(in srgb, var(--tile) 35%, transparent) 0 80px, transparent 81px),
+      var(--surface);
+  }
 }
 .cal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
 .cal-title { display: grid; justify-items: center; line-height: 1; }
@@ -391,7 +411,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .cal-hours { text-align: center; font-size: 12px; font-weight: 700; color: var(--muted); margin: 2px 0 10px; }
 .cal-week, .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
 .cal-week { margin-bottom: 5px; text-align: center; font-size: 12px; font-weight: 900; color: var(--muted); }
-.cal-week .we { color: var(--red); }
+.cal-week .sat { color: var(--accent); }
+.cal-week .sun { color: var(--red); }
 .cal-day {
   position: relative;
   aspect-ratio: .82;
@@ -419,7 +440,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .cal-day.closed { background: repeating-linear-gradient(-45deg, var(--surface-2) 0 6px, color-mix(in srgb, var(--surface-2) 55%, var(--surface)) 6px 12px); }
 .cal-day.closed .cal-time { color: var(--red); }
 .cal-day.past:not(.today) { opacity: .55; }
-.cal-day.today { box-shadow: 0 0 0 2.5px var(--accent); animation: bob 1.8s ease-in-out infinite; z-index: 1; }
+.cal-day.today { box-shadow: 0 0 0 2.5px var(--sun); animation: bob 1.8s ease-in-out infinite; z-index: 1; }
 @keyframes bob { 50% { transform: translateY(-3px); } }
 .hanko {
   position: absolute;
@@ -431,7 +452,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   border-radius: 50%;
   background: color-mix(in srgb, var(--surface) 70%, transparent);
   color: var(--red);
-  font-family: "Zen Maru Gothic", "Hiragino Mincho ProN", serif;
+  font-family: var(--font);
   font-size: 10px;
   font-weight: 900;
   transform: rotate(-14deg);
@@ -453,7 +474,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   background:
     radial-gradient(circle at 100% 0, color-mix(in srgb, var(--c) 45%, transparent) 0 26px, transparent 27px),
     color-mix(in srgb, var(--c) 28%, var(--surface));
-  font-family: "Zen Maru Gothic", -apple-system, "Hiragino Sans", sans-serif;
+  font-family: var(--font);
   cursor: pointer;
   min-width: 0;
 }
@@ -473,7 +494,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   border: 0;
   border-radius: 14px;
   background: color-mix(in srgb, var(--c) 30%, var(--surface));
-  font-family: "Zen Maru Gothic", -apple-system, "Hiragino Sans", sans-serif;
+  font-family: var(--font);
   cursor: pointer;
 }
 .special-pill span { font-size: 22px; }
@@ -548,7 +569,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 /* Weekly opening hours */
 .week { display: grid; gap: 6px; }
 .day-row { display: flex; align-items: center; gap: 6px; }
-.day-name { width: 34px; flex: none; font-size: 14px; font-weight: 650; }
+.day-name { width: 34px; flex: none; font-size: 14px; font-weight: 700; }
 .day-row input[type="time"] { flex: 1; min-width: 0; min-height: 40px; padding: 8px; text-align: center; }
 .day-row .dash { color: var(--muted); }
 .closed-toggle { position: relative; flex: none; }
@@ -557,7 +578,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   display: inline-block;
   padding: 8px 10px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   border: 1px solid var(--line);
   border-radius: 99px;
   background: var(--bg);
@@ -581,7 +602,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .sync code { font: 600 14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink); word-break: break-all; }
 .sync .join { display: flex; gap: 8px; }
 .sync .join input { background: var(--surface); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.sync-state { font-size: 12px; font-weight: 600; color: var(--muted); }
+.sync-state { font-size: 12px; font-weight: 700; color: var(--muted); }
 .sync-state[data-s="ok"] { color: var(--ok); }
 .sync-state[data-s="error"] { color: var(--red); }
 
@@ -610,7 +631,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   background: var(--ink);
   color: var(--bg);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   opacity: 0;
   transform: translate(-50%, 10px);
   transition: opacity .2s, transform .2s;
