@@ -53,6 +53,12 @@ To add a sento's monthly bath calendar, tap **+ Add** under Special baths, pick 
 
 Emoji and colours are picked from the bath's name. Tap any special to edit or delete it.
 
+## Map & nearby sento
+
+The Sento tab's **🗺 Map** view shows your sento as ♨ pins and every public bath OpenStreetMap knows within 15 km as orange dots. The list below the map starts with three ⭐ picks (close by, real sento, known hours), then everything else by distance. **+ Add** puts a place in your list, with hours from OpenStreetMap when they're readable. If it's a sento you already have (e.g. "Kosugiyu" vs 小杉湯), choose it to pin it on the map instead.
+
+Map tiles and data © OpenStreetMap contributors. The search uses the public Overpass servers (overpass-api.de, kumi.systems, private.coffee). Results are kept on the phone for a week, and your location is only sent as part of the search.
+
 ## さっぱり photo diary
 
 When logging a visit, add photos with 🤳 **Selfie** (front camera) or 🖼 **Choose**. Every photo appears in the **さっぱり** tab as a grid grouped by month. Tap one to see it large with the sento, date, rating and note.
