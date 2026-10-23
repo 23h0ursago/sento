@@ -730,3 +730,5 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 [hidden] { display: none !important; }
 .milk-step input::-webkit-inner-spin-button, .milk-step input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .milk-step input { -moz-appearance: textfield; appearance: textfield; }
+.bottle .rim { fill: #fff; fill-opacity: .35; stroke: color-mix(in srgb, var(--ink) 28%, transparent); stroke-width: 1.4; }
+@media (prefers-color-scheme: dark) { .bottle .rim { fill-opacity: .12; stroke: color-mix(in srgb, #fff 40%, transparent); } }

@@ -6,7 +6,7 @@
 // phones later, swap store.load/save for a backend (see README).
 // ---------------------------------------------------------------------------
 
-const VERSION = 23; // shown in Settings; keep in step with CACHE in sw.js
+const VERSION = 24; // shown in Settings; keep in step with CACHE in sw.js
 const KEY = 'sento:v1';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -241,28 +241,17 @@ function milkMessage(days) {
   return { head: 'The bottle’s empty!', text: `${d}?! Go soak and grab a milk as soon as you can.` };
 }
 
-// The paper hood over a milk bottle's mouth: flat top, gathered sides with pleats,
-// tied with red string, and a small frill below the string.
-// (cx, y) is the top centre, hw the half width, h the height down to the frill, k the detail scale.
+// The cap on a milk bottle's mouth: a low paper hood hugging the rim, with a faint tie line.
+// (cx, y) is the top centre, hw the half width, h the height, k the detail scale.
 function paperCap(cx, y, hw, h, color, k) {
   const f = n => n.toFixed(2);
   const l = cx - hw, r = cx + hw, bottom = y + h;
-  const hood = `M${f(l)} ${f(bottom)} L${f(l + .7 * k)} ${f(y + 2.6 * k)} Q${f(l + .9 * k)} ${f(y)} ${f(l + 3.4 * k)} ${f(y)}`
-    + ` H${f(r - 3.4 * k)} Q${f(r - .9 * k)} ${f(y)} ${f(r - .7 * k)} ${f(y + 2.6 * k)} L${f(r)} ${f(bottom)} Z`;
-  // frill: little scallops just below the string
-  const fl = l - 1.2 * k, fr = r + 1.2 * k, n = 6, step = (fr - fl) / n;
-  let frill = `M${f(fl)} ${f(bottom - 1.6 * k)}`;
-  for (let i = 0; i < n; i++) frill += ` Q${f(fl + step * (i + .5))} ${f(bottom + 3.2 * k)} ${f(fl + step * (i + 1))} ${f(bottom - .2 * k)}`;
-  frill += ` L${f(fr)} ${f(bottom - 2.2 * k)} H${f(fl)} Z`;
-  const pleats = [-.52, -.18, .18, .52].map(t =>
-    `<path d="M${f(cx + hw * t)} ${f(y + 3.4 * k)} L${f(cx + hw * t * 1.04)} ${f(bottom - 2 * k)}" stroke="#0B2230" stroke-opacity=".12" stroke-width="${f(.9 * k)}" stroke-linecap="round"/>`).join('');
+  const hood = `M${f(l)} ${f(bottom)} V${f(y + 3 * k)} Q${f(l)} ${f(y)} ${f(l + 3 * k)} ${f(y)} H${f(r - 3 * k)} Q${f(r)} ${f(y)} ${f(r)} ${f(y + 3 * k)} V${f(bottom)} Z`;
   return `<g class="paper-cap">
-    <path d="${frill}" fill="${color}"/>
-    <path d="${frill}" fill="#0B2230" fill-opacity=".08"/>
     <path d="${hood}" fill="${color}"/>
-    ${pleats}
-    <ellipse cx="${f(cx)}" cy="${f(y + 1.7 * k)}" rx="${f(hw * .62)}" ry="${f(.95 * k)}" fill="#fff" fill-opacity=".4"/>
-    <path d="M${f(l - .3 * k)} ${f(bottom - 1.9 * k)} H${f(r + .3 * k)}" stroke="#C94B3F" stroke-width="${f(1.6 * k)}" stroke-linecap="round"/>
+    <path d="${hood}" fill="none" stroke="#0B2230" stroke-opacity=".14" stroke-width="${f(.8 * k)}"/>
+    <path d="M${f(l + 1 * k)} ${f(bottom - 2.6 * k)} H${f(r - 1 * k)}" stroke="#0B2230" stroke-opacity=".16" stroke-width="${f(1.2 * k)}" stroke-linecap="round"/>
+    <path d="M${f(l + 3 * k)} ${f(y + 1.6 * k)} H${f(r - 3 * k)}" stroke="#fff" stroke-opacity=".45" stroke-width="${f(1.1 * k)}" stroke-linecap="round"/>
   </g>`;
 }
 
@@ -276,9 +265,9 @@ const BOTTLES = {
 // A glass milk bottle with a paper cap tied with string; `level` is 0–1.
 function milkBottle(kind, level, pour) {
   const b = BOTTLES[kind];
-  const top = 30, bottom = 132;                       // milk can fill from the neck to the base
+  const top = 31, bottom = 132;                       // milk can fill from the neck to the base
   const drop = (1 - Math.max(0, Math.min(1, level))) * (bottom - top);
-  const glass = 'M25 22H55V34C55 44 70 47 70 60V123Q70 132 61 132H19Q10 132 10 123V60C10 47 25 44 25 34Z';
+  const glass = 'M19 27H61V31C61 41 70 44 70 56V123Q70 132 61 132H19Q10 132 10 123V56C10 44 19 41 19 31Z';
   return `<svg class="bottle${pour ? ' pour' : ''}" viewBox="0 0 80 140" style="--drop:${drop.toFixed(1)}px" aria-hidden="true">
     <defs><clipPath id="glass-${kind}"><path d="${glass}"/></clipPath></defs>
     <path d="${glass}" class="glass"/>
@@ -288,9 +277,10 @@ function milkBottle(kind, level, pour) {
     </g>
     <rect x="10" y="80" width="60" height="21" fill="${b.band}" opacity=".92"/>
     <text x="40" y="94.5" text-anchor="middle" fill="#fff" font-size="${b.label.length > 3 ? 10 : 11.5}" font-weight="900" class="bottle-label">${b.label}</text>
-    <path d="M17 64V118" class="shine"/>
+    <path d="M16.5 60V118" class="shine"/>
+    <rect x="17.5" y="24.5" width="45" height="5.5" rx="2.75" class="rim"/>
     <path d="${glass}" class="glass-edge"/>
-    ${paperCap(40, 9, 15.8, 17.5, b.cap, 1)}
+    ${paperCap(40, 16.5, 23.5, 11, b.cap, 1)}
   </svg>`;
 }
 
@@ -335,12 +325,12 @@ const milkLine = v => MILK_KINDS.filter(([k]) => v.milk?.[k] > 0).map(([k, icon]
 // One milk bottle standing in a crate slot: only the top shows above the crate wall.
 function crateBottle(kind, cx, base, s) {
   const b = BOTTLES[kind];
-  const w = 11 * s, neck = 5.2 * s, top = base - 46 * s;
+  const w = 11 * s, neck = 7.8 * s, top = base - 44 * s;
   return `<g>
-    <path d="M${cx - w} ${base} V${top + 15 * s} C${cx - w} ${top + 9 * s} ${cx - neck} ${top + 8 * s} ${cx - neck} ${top + 3 * s} H${cx + neck} C${cx + neck} ${top + 8 * s} ${cx + w} ${top + 9 * s} ${cx + w} ${top + 15 * s} V${base} Z"
+    <path d="M${cx - w} ${base} V${top + 13 * s} C${cx - w} ${top + 8 * s} ${cx - neck} ${top + 7 * s} ${cx - neck} ${top + 2.5 * s} H${cx + neck} C${cx + neck} ${top + 7 * s} ${cx + w} ${top + 8 * s} ${cx + w} ${top + 13 * s} V${base} Z"
       fill="${b.milk}" stroke="#2B4756" stroke-opacity=".35" stroke-width="1"/>
     <path d="M${cx - w * .55} ${top + 17 * s} V${base - 4}" stroke="#fff" stroke-opacity=".7" stroke-width="${2 * s}" stroke-linecap="round"/>
-    ${paperCap(cx, top - 3.6 * s, neck + 1.3 * s, 8.4 * s, b.cap, .5 * s)}
+    ${paperCap(cx, top - 3.4 * s, neck + 1.1 * s, 5.6 * s, b.cap, .5 * s)}
   </g>`;
 }
 
