@@ -83,11 +83,13 @@ h1, h2, h3, p { margin: 0; }
   place-items: center;
   width: 40px; height: 40px;
   border-radius: 50%;
-  background: #fff;
+  background: #CDEBFA;          /* light blue so the white towel shows */
+  box-shadow: 0 0 0 2.5px #fff;
   color: var(--noren-ink);
   font-weight: 900;
   font-size: 22px;
 }
+.yu img { display: block; width: 34px; height: 34px; }
 .top h1 { font-size: 20px; font-weight: 900; letter-spacing: .02em; }
 .top p { font-size: 13px; opacity: .75; }
 .icon-btn {
