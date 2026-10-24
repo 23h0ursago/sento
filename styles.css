@@ -1,4 +1,4 @@
-/* Baby blue, aqua tiles, steam white and a sunset-orange accent */
+/* Baby blue, aqua tiles, steam white and a sunset-orange accent. Always light. */
 :root {
   --bg: #EEF6F7;          /* steam white */
   --surface: #FFFFFF;
@@ -23,27 +23,6 @@
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0D1A21;
-    --surface: #14252E;
-    --surface-2: #1B313C;
-    --ink: #E2F0F2;
-    --muted: #8DA9B3;
-    --line: #25404C;
-    --noren: #89CFF0;
-    --primary: #89CFF0;
-    --accent: #89CFF0;
-    --sun: #F59A4D;
-    --sun-ink: #1D1206;
-    --tile: #2D6A70;
-    --red: #EE6B5B;
-    --gold: #F2B54E;
-    --ok: #5DC9A0;
-    --shadow: none;
-    color-scheme: dark;
-  }
-}
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -221,10 +200,6 @@ em { font-style: normal; font-weight: 400; color: var(--muted); font-size: 13px;
 @keyframes pour { from { transform: translateY(102px); } }
 .bottle .shine { stroke: #fff; stroke-width: 3.5; stroke-linecap: round; opacity: .55; }
 .bottle-label { font-family: var(--font); letter-spacing: .5px; }
-@media (prefers-color-scheme: dark) {
-  .bottle .glass { fill: #3B4B57; }
-  .bottle .glass-edge { stroke: color-mix(in srgb, #fff 40%, transparent); }
-}
 @media (prefers-reduced-motion: reduce) { .bottle.pour .milk { animation: none; } }
 
 /* Lists & rows */
@@ -364,9 +339,6 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   font-family: var(--font);
 }
 .map-loading { display: grid; place-items: center; color: var(--muted); font-size: 14px; }
-@media (prefers-color-scheme: dark) {
-  .map .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9) saturate(.6); }
-}
 .fav-pin span {
   display: grid;
   place-items: center;
@@ -401,14 +373,6 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
     var(--surface);
   border: 2px solid var(--line);
   box-shadow: var(--shadow);
-}
-@media (prefers-color-scheme: dark) {
-  .cal {
-    background:
-      radial-gradient(circle at 12% 8%, color-mix(in srgb, var(--tile) 22%, transparent) 0 60px, transparent 61px),
-      radial-gradient(circle at 92% 0%, color-mix(in srgb, var(--tile) 35%, transparent) 0 80px, transparent 81px),
-      var(--surface);
-  }
 }
 .cal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
 .cal-title { display: grid; justify-items: center; line-height: 1; }
@@ -724,7 +688,6 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .milk-step input::-webkit-inner-spin-button, .milk-step input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .milk-step input { -moz-appearance: textfield; appearance: textfield; }
 .bottle .rim { fill: #fff; fill-opacity: .35; stroke: color-mix(in srgb, var(--ink) 28%, transparent); stroke-width: 1.4; }
-@media (prefers-color-scheme: dark) { .bottle .rim { fill-opacity: .12; stroke: color-mix(in srgb, #fff 40%, transparent); } }
 
 /* Weather badge in the top bar */
 .weather {
