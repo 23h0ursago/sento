@@ -6,7 +6,7 @@
 // phones later, swap store.load/save for a backend (see README).
 // ---------------------------------------------------------------------------
 
-const VERSION = 27; // shown in Settings; keep in step with CACHE in sw.js
+const VERSION = 28; // shown in Settings; keep in step with CACHE in sw.js
 const KEY = 'sento:v1';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -592,7 +592,9 @@ function suggestions() {
     picked.push(sl);
     if (picked.length === 4) break;
   }
-  return picked;
+  // The highest score is the best bet; show them in date and time order
+  if (picked[0]) picked[0] = { ...picked[0], best: true };
+  return picked.sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
 }
 
 // ---------------------------------------------------------------------------
@@ -731,11 +733,11 @@ function viewGo() {
       : `No open slots in the next 7 days${missingHours.length ? ' — add opening hours in the Sento tab' : ''}.`}</p>`;
   } else {
     h += `<div class="list">${list.map((sl, i) => `
-      <div class="row slot${i === 0 ? ' best' : ''}">
+      <div class="row slot${sl.best ? ' best' : ''}">
         <span class="when"><b>${esc(dayWord(sl.date))}</b><small>${hhmm(sl.start)}–${hhmm(sl.end)}</small></span>
         <span class="grow"><b>${esc(sl.s.name)}</b><small>${esc(sl.label)}${sl.weekend ? ' · weekend, may be busier' : ''}</small>${sl.special ? `<small class="special-line">${sl.special.emoji} ${esc(sl.special.name)}</small>` : ''}</span>
         <span class="slot-side">
-          ${i === 0 ? '<span class="pill">Best bet</span>' : ''}
+          ${sl.best ? '<span class="pill">Best bet</span>' : ''}
           <a class="cal-add" href="${esc(calendarLink(sl))}" target="_blank" rel="noopener" aria-label="Add to Google Calendar">📅</a>
         </span>
       </div>`).join('')}</div>
